@@ -1,0 +1,50 @@
+services:
+  mysql_qriz:
+    image: mysql:8.0.33
+    container_name: mysql
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=1234
+      - MYSQL_DATABASE=qriz
+      - MYSQL_USER=qriz
+      - MYSQL_PASSWORD=1234
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - qriz-network
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  redis_qriz:
+    image: redis:6.2
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - qriz-network
+
+  qriz_app:
+    build: .
+    container_name: qriz-app
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mysql_qriz
+      - redis_qriz
+    networks:
+      - qriz-network
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql_qriz:3306/qriz?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=qriz
+      - SPRING_DATASOURCE_PASSWORD=1234
+      - SPRING_REDIS_HOST=redis_qriz
+
+networks:
+  qriz-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  redis-data:
