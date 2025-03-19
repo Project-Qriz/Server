@@ -1,7 +1,15 @@
 package com.qriz.sqld.dto.preview;
 
 import com.qriz.sqld.domain.question.Question;
+import com.qriz.sqld.domain.question.option.Option;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
+import java.util.stream.Collectors;
+
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -9,22 +17,35 @@ import lombok.Setter;
 @Setter
 public class QuestionDto {
     private Long questionId;
+    private Long skillId;
+    private int category;
     private String question;
-    private String option1;
-    private String option2;
-    private String option3;
-    private String option4;
-    private Integer timeLimit;
+    private String description;
+    private List<OptionDto> options;
+    private int timeLimit;
+    private int difficulty;
 
-    public static QuestionDto from(Question question) {
-        QuestionDto dto = new QuestionDto();
-        dto.setQuestionId(question.getId());
-        dto.setQuestion(question.getQuestion());
-        dto.setOption1(question.getOption1());
-        dto.setOption2(question.getOption2());
-        dto.setOption3(question.getOption3());
-        dto.setOption4(question.getOption4());
-        dto.setTimeLimit(question.getTimeLimit());
-        return dto;
+    public QuestionDto(Question question, long seed) {
+        this.questionId = question.getId();
+        this.skillId = (question.getSkill() != null) ? question.getSkill().getId() : 0L;
+        this.category = question.getCategory();
+        this.question = question.getQuestion();
+        this.description = question.getDescription();
+        this.timeLimit = (question.getTimeLimit() != null) ? question.getTimeLimit() : 0;
+        this.difficulty = (question.getDifficulty() != null) ? question.getDifficulty() : 1;
+        List<Option> sortedOptions = question.getSortedOptions();
+        List<Option> randomized = new ArrayList<>(sortedOptions);
+        Collections.shuffle(randomized, new Random(seed));
+        this.options = randomized.stream()
+                .map(opt -> new OptionDto(opt.getId(), opt.getContent()))
+                .collect(Collectors.toList());
+    }
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    public static class OptionDto {
+        private Long id;
+        private String content;
     }
 }

@@ -2,6 +2,8 @@ package com.qriz.sqld.dto.user;
 
 import com.qriz.sqld.domain.user.User;
 import com.qriz.sqld.domain.user.UserEnum;
+import com.qriz.sqld.handler.validator.ValidPassword;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -28,7 +30,7 @@ public class UserReqDto {
          * 3. 공백 불포함
          * 4. 특수문자 불포함
          */
-        @Pattern(regexp = "^(?=.*[a-zA-Z])(?=.*\\d)[a-zA-Z\\d]{6,20}$", message = "영문/숫자 2~20자 이내로 작성해주세요")
+        @Pattern(regexp = "^(?=.*[a-zA-Z])(?=.*\\d)[a-zA-Z\\d]{6,20}$", message = "영문/숫자 6~20자 이내로 작성해주세요")
         @NotEmpty
         private String username;
 
@@ -40,7 +42,7 @@ public class UserReqDto {
          * 5. 특수 문자 포함 : 하나 이상의 특수 문자 포함
          */
         @NotEmpty
-        @Pattern(regexp = "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=*!])(?=\\S+$).{8,16}$")
+        @ValidPassword
         private String password;
 
         @NotEmpty
@@ -100,6 +102,9 @@ public class UserReqDto {
     @Setter
     public static class VerifyAuthNumberReqDto {
         @NotEmpty
+        private String email;
+
+        @NotEmpty
         private String authNumber;
     }
 
@@ -107,8 +112,11 @@ public class UserReqDto {
     @Setter
     public static class ResetPasswordReqDto {
         @NotEmpty
-        @Pattern(regexp = "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=*!])(?=\\S+$).{8,16}$", message = "비밀번호는 8자 이상이며, 영문, 숫자, 특수문자를 포함해야 합니다.")
+        @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[@$!%*#?&])[A-Za-z\\d@$!%*#?&]{8,}$", message = "비밀번호는 8자 이상, 영문자, 숫자, 특수문자를 포함해야 합니다.")
         private String newPassword;
+
+        @NotEmpty
+        private String resetToken;
     }
 
     @Getter
