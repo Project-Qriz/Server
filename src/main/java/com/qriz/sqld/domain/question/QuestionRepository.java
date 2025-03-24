@@ -58,7 +58,7 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
          * @return 무작위로 선택된 Question 목록
          */
         @Query(value = "SELECT * FROM question q " +
-                        "WHERE q.skill_id IN :skillIds " +
+                        "WHERE q.skill_id IN (:skillIds) " +
                         "AND q.category = :category " +
                         "ORDER BY RAND() " +
                         "LIMIT :limit", nativeQuery = true)
@@ -85,7 +85,7 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
 
         @Query(value = "SELECT q.* FROM question q " +
                         "JOIN skill s ON q.skill_id = s.skill_id " +
-                        "WHERE q.skill_id IN :skillIds AND q.category = :category " +
+                        "WHERE q.skill_id IN (:skillIds) AND q.category = :category " +
                         "ORDER BY s.frequency DESC, RAND() " +
                         "LIMIT :limit", nativeQuery = true)
         List<Question> findRandomQuestionsBySkillIdsAndCategoryOrderByFrequency(

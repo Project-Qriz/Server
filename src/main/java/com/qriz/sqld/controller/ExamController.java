@@ -19,7 +19,6 @@ import com.qriz.sqld.dto.daily.ResultDetailDto;
 import com.qriz.sqld.dto.exam.ExamReqDto;
 import com.qriz.sqld.dto.exam.ExamRespDto;
 import com.qriz.sqld.dto.exam.ExamTestResult;
-import com.qriz.sqld.dto.test.TestReqDto;
 import com.qriz.sqld.service.exam.ExamService;
 
 import lombok.RequiredArgsConstructor;
@@ -34,14 +33,14 @@ public class ExamController {
     /**
      * 특정 회차의 모의고사 문제 불러오기
      * 
-     * @param session
-     * @param loginUser
-     * @return
+     * @param examId    모의고사의 식별자 (예: 1)
+     * @param loginUser 로그인한 사용자 정보
+     * @return 모의고사 문제 및 관련 정보
      */
-    @GetMapping("/get/{session}")
-    public ResponseEntity<?> getExamSession(@PathVariable String session,
+    @GetMapping("/get/{examId}")
+    public ResponseEntity<?> getExamSession(@PathVariable Long examId,
             @AuthenticationPrincipal LoginUser loginUser) {
-        ExamTestResult examResult = examService.getExamQuestionsBySession(loginUser.getUser().getId(), session);
+        ExamTestResult examResult = examService.getExamQuestionsBySession(loginUser.getUser().getId(), examId);
         return new ResponseEntity<>(new ResponseDto<>(1, "모의고사 문제 불러오기 성공", examResult), HttpStatus.OK);
     }
 
@@ -52,47 +51,76 @@ public class ExamController {
      * @param loginUser  로그인한 사용자
      * @return 테스트 제출 결과
      */
-    @PostMapping("/submit/{session}")
+    @PostMapping("/submit/{examId}")
     public ResponseEntity<?> submitExam(
-            @PathVariable String session,
+            @PathVariable Long examId,
             @RequestBody ExamReqDto submission,
             @AuthenticationPrincipal LoginUser loginUser) {
-        examService.processExamSubmission(loginUser.getUser().getId(), session, submission);
+        examService.processExamSubmission(loginUser.getUser().getId(), examId, submission);
         return new ResponseEntity<>(new ResponseDto<>(1, "모의고사 제출 성공", null), HttpStatus.OK);
     }
 
     /**
      * 모의고사 공부 결과 - 문제 상세보기
      * 
-     * @param session    모의고사 회차 정보
+     * @param examId     모의고사 회차 정보
      * @param questionId 문제 아이디
      * @param loginUser  로그인한 사용자
      * @return
      */
-    @GetMapping("/result/{session}/{questionId}")
-    public ResponseEntity<?> getDailyResultDetail(@PathVariable String session,
+    @GetMapping("/result/{examId}/{questionId}")
+    public ResponseEntity<?> getDailyResultDetail(@PathVariable Long examId,
             @PathVariable Long questionId,
             @AuthenticationPrincipal LoginUser loginUser) {
-        ResultDetailDto resultDetail = examService.getExamResultDetail(loginUser.getUser().getId(),
-                session,
+
+        ResultDetailDto resultDetail = examService.getExamResultDetail(
+                loginUser.getUser().getId(),
+                examId,
                 questionId);
         return new ResponseEntity<>(new ResponseDto<>(1, "모의고사 결과 상세 조회 성공", resultDetail), HttpStatus.OK);
     }
 
+    @GetMapping("/{examId}/scores")
+    public ResponseEntity<?> getExamScores(@PathVariable Long examId,
+            @RequestParam String subject,
+            @AuthenticationPrincipal LoginUser loginUser) {
+        ExamTestResult.SimpleSubjectDetails scores = examService.getExamScoreBySubject(
+                loginUser.getUser().getId(), examId, subject);
+        return new ResponseEntity<>(new ResponseDto<>(1, "특정 과목의 주요항목별 점수 조회 성공", scores),
+                HttpStatus.OK);
+    }
+
     /**
-     * 특정 모의고사 회차의 과목별 세부 항목 점수, 문제 풀이 결과 조회
+     * 특정 모의고사의 문제별 채점 결과
      * 
-     * @param session
+     * @param examId
      * @param loginUser
      * @return
      */
-    @GetMapping("/subject-details/{session}")
-    public ResponseEntity<?> getDaySubjectDetails(@PathVariable String session,
+    @GetMapping("/{examId}/results")
+    public ResponseEntity<?> getExamResults(@PathVariable Long examId,
             @AuthenticationPrincipal LoginUser loginUser) {
-        ExamTestResult.Response details = examService.getExamSubjectDetails(loginUser.getUser().getId(),
-                session);
-        return new ResponseEntity<>(new ResponseDto<>(1, "과목별 세부 항목 점수, 문제 풀이 결과 조회 성공", details),
-                HttpStatus.OK);
+
+        ExamTestResult.ExamResultsDto results = examService.getExamResults(loginUser.getUser().getId(), examId);
+        return new ResponseEntity<>(new ResponseDto<>(1, "문제 풀이 결과 조회 성공", results), HttpStatus.OK);
+    }
+
+    /**
+     * 특정 모의고사의 과목별 세부항목별 점수
+     * 
+     * @param examId    모의고사의 식별자 (예: 1)
+     * @param subject   subject1 또는 subject2
+     * @param loginUser 로그인한 사용자 정보
+     * @return 과목별 세부항목 점수
+     */
+    @GetMapping("/{examId}/subject-details")
+    public ResponseEntity<?> getSubjectScoreDetails(
+            @PathVariable Long examId,
+            @RequestParam String subject,
+            @AuthenticationPrincipal LoginUser loginUser) {
+        ExamTestResult.SubjectDetails details = examService.getSubjectScoreDetails(
+                loginUser.getUser().getId(), examId, subject);
+        return new ResponseEntity<>(new ResponseDto<>(1, "과목별 세부항목 점수 조회 성공", details), HttpStatus.OK);
     }
 
     /**
@@ -110,7 +138,8 @@ public class ExamController {
             @AuthenticationPrincipal LoginUser loginUser,
             @RequestParam(defaultValue = "all") String status,
             @RequestParam(defaultValue = "asc") String sort) {
-        List<ExamRespDto.SessionList> lists = examService.getSessionList(loginUser.getUser().getId(), status, sort);
+        List<ExamRespDto.SessionList> lists = examService.getSessionList(loginUser.getUser().getId(), status,
+                sort);
         return new ResponseEntity<>(new ResponseDto<>(1, "모의고사 리스트 불러오기 성공", lists), HttpStatus.OK);
     }
 }

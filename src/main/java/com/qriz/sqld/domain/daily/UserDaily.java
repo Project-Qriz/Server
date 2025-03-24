@@ -3,6 +3,7 @@ package com.qriz.sqld.domain.daily;
 import java.util.List;
 import java.util.ArrayList;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -59,9 +60,7 @@ public class UserDaily {
     private boolean comprehensiveReviewDay;
 
     @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(name = "user_daily_skills",
-            joinColumns = @JoinColumn(name = "daily_id"),
-            inverseJoinColumns = @JoinColumn(name = "skill_id"))
+    @JoinTable(name = "user_daily_skills", joinColumns = @JoinColumn(name = "daily_id"), inverseJoinColumns = @JoinColumn(name = "skill_id"))
     private List<Skill> plannedSkills = new ArrayList<>();
 
     private LocalDate planDate;
@@ -74,6 +73,15 @@ public class UserDaily {
 
     // 재시험 가능 여부
     private boolean retestEligible;
+
+    // 플랜 버전
+    private int planVersion = 1;
+
+    // 아카이브 여부 (이전 버전 구분)
+    private boolean isArchived = false;
+
+    // 아카이브된 시점
+    private LocalDateTime archivedAt;
 
     public void updateTestStatus(boolean isPassed) {
         this.attemptCount++;
