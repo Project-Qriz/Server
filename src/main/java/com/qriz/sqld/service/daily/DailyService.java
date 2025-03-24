@@ -162,8 +162,7 @@ public class DailyService {
             userActivity.setQuestion(question);
             userActivity.setTestInfo(dayNumber);
             userActivity.setQuestionNum(activity.getQuestionNum());
-            // 여기서는 제출된 optionId를 String 형태로 저장할 수 있습니다.
-            userActivity.setChecked(String.valueOf(activity.getOptionId()));
+            userActivity.setChecked(activity.getOptionId());
             userActivity.setTimeSpent(activity.getTimeSpent());
             userActivity.setCorrection(isCorrect);
             userActivity.setDate(LocalDateTime.now());

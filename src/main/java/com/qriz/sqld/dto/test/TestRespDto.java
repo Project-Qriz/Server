@@ -150,7 +150,7 @@ public class TestRespDto {
         private Long userId;
         private QuestionRespDto question;
         private int questionNum;
-        private String checked;
+        private Long checked;
         private boolean correction;
 
         @Getter
@@ -166,7 +166,7 @@ public class TestRespDto {
         }
 
         public ExamSubmitRespDto(Long activityId, Long userId, QuestionRespDto question, int questionNum,
-                String checked, boolean correction) {
+                Long checked, boolean correction) {
             this.activityId = activityId;
             this.userId = userId;
             this.question = question;

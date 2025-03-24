@@ -38,6 +38,7 @@ public class ResultDetailDto {
     private boolean correction;
     // 그 외 추가 정보 (필요에 따라 사용)
     private String testInfo;
+    private Long skillId;
     private String title;
     private String keyConcepts;
 
@@ -45,7 +46,6 @@ public class ResultDetailDto {
      * Question 엔티티와 UserActivity 엔티티를 기반으로 ResultDetailDto를 생성
      */
     public static ResultDetailDto from(Question question, UserActivity userActivity) {
-        // Option 엔티티를 optionOrder 기준으로 정렬
         List<Option> sortedOptions = question.getSortedOptions();
 
         String op1 = sortedOptions.size() > 0 ? sortedOptions.get(0).getContent() : null;
@@ -53,16 +53,23 @@ public class ResultDetailDto {
         String op3 = sortedOptions.size() > 2 ? sortedOptions.get(2).getContent() : null;
         String op4 = sortedOptions.size() > 3 ? sortedOptions.get(3).getContent() : null;
 
-        // 정답은 isAnswer가 true인 선택지의 내용을 가져옴
         String correctAnswer = sortedOptions.stream()
                 .filter(Option::isAnswer)
                 .map(Option::getContent)
                 .findFirst()
                 .orElse(null);
 
+        // 사용자가 선택한 옵션 id를 기반으로 실제 선택한 옵션 내용을 추출
+        String userCheckedOption = sortedOptions.stream()
+                .filter(option -> option.getId().equals(userActivity.getChecked()))
+                .map(Option::getContent)
+                .findFirst()
+                .orElse(null);
+
         return ResultDetailDto.builder()
-                .skillName(question.getSkill().getKeyConcepts())
+                .skillName(question.getSkill().getKeyConcepts()) // 기존에 사용하던 값 (원한다면 title로 변경 가능)
                 .questionText(question.getQuestion())
+                .questionNum(userActivity.getQuestionNum()) // 추가된 문제 번호
                 .description(question.getDescription())
                 .option1(op1)
                 .option2(op2)
@@ -70,8 +77,12 @@ public class ResultDetailDto {
                 .option4(op4)
                 .answer(correctAnswer)
                 .solution(question.getSolution())
-                .checked(userActivity.getChecked())
+                .checked(userCheckedOption)
                 .correction(userActivity.isCorrection())
+                .testInfo(userActivity.getTestInfo())
+                .skillId(question.getSkill().getId())
+                .title(question.getSkill().getTitle())
+                .keyConcepts(question.getSkill().getKeyConcepts())
                 .build();
     }
 }

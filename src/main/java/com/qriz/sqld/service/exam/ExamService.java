@@ -112,8 +112,7 @@ public class ExamService {
                         userActivity.setQuestion(question);
                         userActivity.setTestInfo(userExamSession.getSession());
                         userActivity.setQuestionNum(activity.getQuestionNum());
-                        // 여기서 checked 필드에 선택한 optionId를 문자열로 저장 (또는 별도 필드로 저장)
-                        userActivity.setChecked(String.valueOf(activity.getOptionId()));
+                        userActivity.setChecked(activity.getOptionId());
                         userActivity.setTimeSpent(0); // 모의고사의 경우 시간 정보가 없으면 0 처리
                         userActivity.setCorrection(isCorrect);
                         userActivity.setDate(LocalDateTime.now());
@@ -378,7 +377,8 @@ public class ExamService {
                                         List.of("관계형 데이터베이스 개요", "SELECT 문", "함수", "WHERE 절", "GROUP BY, HAVING 절",
                                                         "ORDER BY 절", "조인", "표준 조인"));
                         majorAndSubItems.put("SQL 활용",
-                                        List.of("SQL 활용")); // 필요 시 세부 항목 추가
+                                        List.of("서브 쿼리", "집합 연산자", "그룹 함수", "윈도우 함수", "TOP N 쿼리", "계층형 질의와 셀프 조인",
+                                                        "PIVOI 절과 UNPIVOT 절", "정규 표현식"));
                         majorAndSubItems.put("관리 구문",
                                         List.of("DML", "TCL", "DDL", "DCL"));
                 } else {
