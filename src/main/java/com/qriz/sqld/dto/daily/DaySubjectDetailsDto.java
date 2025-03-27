@@ -12,6 +12,7 @@ public class DaySubjectDetailsDto {
     @AllArgsConstructor
     public static class Response {
         private String dayNumber;
+        private boolean passed;
         private List<SubjectDetails> userDailyInfoList;
         private List<DailyResultDto> subjectResultsList;
     }

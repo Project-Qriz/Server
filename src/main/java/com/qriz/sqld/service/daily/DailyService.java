@@ -308,6 +308,13 @@ public class DailyService {
 
     @Transactional(readOnly = true)
     public DaySubjectDetailsDto.Response getDaySubjectDetails(Long userId, String dayNumber) {
+        // UserDaily 엔티티에서 해당 데일리 정보 조회 (isArchived가 false인 경우)
+        UserDaily userDaily = userDailyRepository
+                .findByUserIdAndDayNumberAndIsArchivedFalse(userId, dayNumber)
+                .orElse(null);
+        // 데일리 정보가 없으면 기본값 false를 사용하거나 예외 처리할 수 있음
+        boolean passed = (userDaily != null) ? userDaily.isPassed() : false;
+
         List<UserActivity> activities = userActivityRepository.findByUserIdAndTestInfo(userId, dayNumber);
 
         Map<String, DaySubjectDetailsDto.SubjectDetails> subjectDetailsMap = new HashMap<>();
@@ -325,7 +332,7 @@ public class DailyService {
             subjectDetailsMap.computeIfAbsent(title, k -> new DaySubjectDetailsDto.SubjectDetails(title))
                     .addScore(keyConcepts, score);
 
-            // 각 activity에 대한 DailyResultDto도 생성
+            // 각 activity에 대한 DailyResultDto 생성
             DaySubjectDetailsDto.DailyResultDto resultDto = new DaySubjectDetailsDto.DailyResultDto(
                     skill.getKeyConcepts(),
                     question.getQuestion(),
@@ -339,7 +346,8 @@ public class DailyService {
             subject.adjustTotalScore();
         }
 
-        return new DaySubjectDetailsDto.Response(dayNumber, subjectDetailsList, dailyResults);
+        // Response 객체 생성 시 passed 필드도 전달
+        return new DaySubjectDetailsDto.Response(dayNumber, passed, subjectDetailsList, dailyResults);
     }
 
     @Transactional(readOnly = true)
