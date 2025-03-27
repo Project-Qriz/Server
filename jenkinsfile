@@ -17,20 +17,22 @@ pipeline {
 
         stage('Push Docker Image') {
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: "${aws-credentials}",
-                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                ]]) {
-                    sh 'aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 314146328505.dkr.ecr.your-region.amazonaws.com'
-                    sh 'docker tag qriz-api:latest 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest'
-                    sh 'docker push 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest'
+                script {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: "${AWS_CREDENTIALS}",
+                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                    ]]) {
+                        sh 'aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com'
+                        sh 'docker tag qriz-api:latest 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest'
+                        sh 'docker push 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest'
 
-                    // 또는 내부 레지스트리를 사용하는 경우
-                    // sh 'docker login your-registry -u username -p password'
-                    // sh 'docker tag your-backend-app:latest your-registry/your-backend-app:latest'
-                    // sh 'docker push your-registry/your-backend-app:latest'
+                        // 또는 내부 레지스트리를 사용하는 경우
+                        // sh 'docker login your-registry -u username -p password'
+                        // sh 'docker tag your-backend-app:latest your-registry/your-backend-app:latest'
+                        // sh 'docker push your-registry/your-backend-app:latest'
+                    }
                 }
             }
         }
