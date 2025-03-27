@@ -25,22 +25,6 @@ services:
     networks:
       - qriz-network
 
-  qriz_app:
-    build: .
-    container_name: qriz-app
-    ports:
-      - "8081:8081"
-    depends_on:
-      - mysql_qriz
-      - redis_qriz
-    networks:
-      - qriz-network
-    environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql_qriz:3306/qriz?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
-      - SPRING_DATASOURCE_USERNAME=qriz
-      - SPRING_DATASOURCE_PASSWORD=1234
-      - SPRING_REDIS_HOST=redis_qriz
-
 networks:
   qriz-network:
     driver: bridge
