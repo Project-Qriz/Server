@@ -112,8 +112,7 @@ public class ExamService {
                         userActivity.setQuestion(question);
                         userActivity.setTestInfo(userExamSession.getSession());
                         userActivity.setQuestionNum(activity.getQuestionNum());
-                        // 여기서 checked 필드에 선택한 optionId를 문자열로 저장 (또는 별도 필드로 저장)
-                        userActivity.setChecked(String.valueOf(activity.getOptionId()));
+                        userActivity.setChecked(activity.getOptionId());
                         userActivity.setTimeSpent(0); // 모의고사의 경우 시간 정보가 없으면 0 처리
                         userActivity.setCorrection(isCorrect);
                         userActivity.setDate(LocalDateTime.now());
@@ -378,7 +377,8 @@ public class ExamService {
                                         List.of("관계형 데이터베이스 개요", "SELECT 문", "함수", "WHERE 절", "GROUP BY, HAVING 절",
                                                         "ORDER BY 절", "조인", "표준 조인"));
                         majorAndSubItems.put("SQL 활용",
-                                        List.of("SQL 활용")); // 필요 시 세부 항목 추가
+                                        List.of("서브 쿼리", "집합 연산자", "그룹 함수", "윈도우 함수", "TOP N 쿼리", "계층형 질의와 셀프 조인",
+                                                        "PIVOI 절과 UNPIVOT 절", "정규 표현식"));
                         majorAndSubItems.put("관리 구문",
                                         List.of("DML", "TCL", "DDL", "DCL"));
                 } else {
@@ -422,6 +422,49 @@ public class ExamService {
 
                 subjectDetails.adjustTotalScore();
                 return subjectDetails;
+        }
+
+        @Transactional(readOnly = true)
+        public List<ExamTestResult.SubjectDetails> getSubjectScoreDetailsForAllSubjects(Long userId, Long examId) {
+                // 두 과목에 대한 세부 정보를 개별적으로 구한 후 리스트로 반환
+                ExamTestResult.SubjectDetails details1 = getSubjectScoreDetails(userId, examId, "subject1");
+                ExamTestResult.SubjectDetails details2 = getSubjectScoreDetails(userId, examId, "subject2");
+
+                return List.of(details1, details2);
+        }
+
+        @Transactional
+        public List<ExamTestResult.SimpleMajorItem> getMajorResults(Long userId, Long examId) {
+                // examId를 "회차" 형식의 문자열로 변환 (예: 1 -> "1회차")
+                String session = examId + "회차";
+
+                // 해당 세션의 ExamSession 조회
+                List<UserExamSession> userExamSessions = userExamSessionRepository
+                                .findByUserIdAndSessionOrderByCompletionDateDesc(userId, session);
+                if (userExamSessions.isEmpty()) {
+                        throw new CustomApiException("해당 회차의 모의고사 세션을 찾을 수 없습니다.");
+                }
+                // 최신 세션 사용
+                UserExamSession latestSession = userExamSessions.get(0);
+
+                // 해당 세션의 활동(Activity) 조회
+                List<UserActivity> activities = userActivityRepository.findByExamSession(latestSession);
+
+                // 각 주요 항목별 점수를 누적 (주요 항목은 skill.getType()로 가정)
+                Map<String, Double> majorScoreMap = new HashMap<>();
+                for (UserActivity activity : activities) {
+                        String majorItem = activity.getQuestion().getSkill().getType();
+                        // 누적 점수 계산
+                        double currentScore = majorScoreMap.getOrDefault(majorItem, 0.0);
+                        majorScoreMap.put(majorItem, currentScore + activity.getScore());
+                }
+
+                // Map을 List<SimpleMajorItem>로 변환하여 반환
+                List<ExamTestResult.SimpleMajorItem> result = majorScoreMap.entrySet().stream()
+                                .map(e -> new ExamTestResult.SimpleMajorItem(e.getKey(), e.getValue()))
+                                .collect(Collectors.toList());
+
+                return result;
         }
 
         @Transactional

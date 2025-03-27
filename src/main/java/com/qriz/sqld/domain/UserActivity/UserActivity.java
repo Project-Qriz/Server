@@ -64,8 +64,7 @@ public class UserActivity {
     /**
      * 사용자가 체크한 정답
      */
-    @Column(columnDefinition = "TEXT")
-    private String checked;
+    private Long checked;
 
     /**
      * 소요 시간

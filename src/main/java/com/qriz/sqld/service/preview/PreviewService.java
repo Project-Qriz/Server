@@ -168,8 +168,7 @@ public class PreviewService {
                 userActivity.setQuestion(question);
                 userActivity.setTestInfo("Preview Test");
                 userActivity.setQuestionNum(activity.getQuestionNum());
-                // 제출된 optionId를 String 형태로 저장하거나 별도로 보관
-                userActivity.setChecked(String.valueOf(activity.getOptionId()));
+                userActivity.setChecked(activity.getOptionId());
                 userActivity.setTimeSpent(0); // 시간 정보가 없으면 0 처리
 
                 // Option PK를 사용하여 Option 엔티티 조회

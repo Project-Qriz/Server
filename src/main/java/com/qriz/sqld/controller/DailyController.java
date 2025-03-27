@@ -21,7 +21,6 @@ import com.qriz.sqld.dto.daily.UserDailyDto.DailyDetailAndStatusDto;
 import com.qriz.sqld.dto.daily.WeeklyTestResultDto;
 import com.qriz.sqld.dto.test.TestReqDto;
 import com.qriz.sqld.dto.test.TestRespDto;
-import com.qriz.sqld.dto.test.TestRespDto.DailyRespDto;
 import com.qriz.sqld.handler.ex.CustomApiException;
 import com.qriz.sqld.service.daily.DailyPlanService;
 import com.qriz.sqld.service.daily.DailyService;
