@@ -70,10 +70,19 @@ pipeline {
                             # ECR 로그인
                             echo $LOGIN_COMMAND | docker login --username AWS --password-stdin 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com &&
 
-                            # 이미지 풀 및 컨테이너 실행
+                            # 8081 포트 사용 중인 프로세스 확인 및 중지
+                            PORT_PID=\$(lsof -t -i:8081 || echo '')
+                            if [ ! -z \"\$PORT_PID\" ]; then
+                                echo '포트 8081을 사용 중인 프로세스를 중지합니다.'
+                                kill -9 \$PORT_PID || true
+                            fi
+
+                            # 모든 관련 컨테이너 중지 및 제거
+                            docker ps -a | grep -i backend | awk '{print \$1}' | xargs -r docker stop || true
+                            docker ps -a | grep -i backend | awk '{print \$1}' | xargs -r docker rm || true
+
+                            # 새 이미지 가져오기 및 실행
                             docker pull 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest &&
-                            docker stop backend-container || true &&
-                            docker rm backend-container || true &&
                             docker run -d --name backend-container -p 8081:8081 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
                         "
                     '''
