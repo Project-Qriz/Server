@@ -51,10 +51,26 @@ pipeline {
 
         stage('Deploy to Backend Server') {
             steps {
-                // SSH 키를 Jenkins Credentials에서 가져와서 사용
-                withCredentials([sshUserPrivateKey(credentialsId: 'backend-server-ssh-key', keyFileVariable: 'SSH_KEY')]) {
+                withCredentials([
+                    sshUserPrivateKey(credentialsId: 'backend-server-ssh-key', keyFileVariable: 'SSH_KEY'),
+                    [
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: "${AWS_CREDENTIALS}",
+                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                    ]
+                ]) {
+                    // AWS 자격 증명을 백엔드 서버에 전달
                     sh '''
+                        # ECR 로그인 명령어 생성
+                        LOGIN_COMMAND=$(aws ecr get-login-password --region ap-northeast-2 | sed 's/$//' | sed 's/^//')
+
+                        # SSH를 통해 백엔드 서버에 명령 실행
                         ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ec2-user@10.0.2.212 "
+                            # ECR 로그인
+                            echo $LOGIN_COMMAND | docker login --username AWS --password-stdin 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com &&
+
+                            # 이미지 풀 및 컨테이너 실행
                             docker pull 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest &&
                             docker stop backend-container || true &&
                             docker rm backend-container || true &&
