@@ -51,15 +51,17 @@ pipeline {
 
         stage('Deploy to Backend Server') {
             steps {
-                // SSH를 통해 프라이빗 서버에 접속하여 새 이미지 배포
-                sh '''
-                    ssh -i dev-bastion.pem ec2-user@10.0.2.212 "
-                        docker pull 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest &&
-                        docker stop backend-container || true &&
-                        docker rm backend-container || true &&
-                        docker run -d --name backend-container -p 8081:8081 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
-                    "
-                '''
+                // SSH 키를 Jenkins Credentials에서 가져와서 사용
+                withCredentials([sshUserPrivateKey(credentialsId: 'backend-server-ssh-key', keyFileVariable: 'SSH_KEY')]) {
+                    sh '''
+                        ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ec2-user@10.0.2.212 "
+                            docker pull 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest &&
+                            docker stop backend-container || true &&
+                            docker rm backend-container || true &&
+                            docker run -d --name backend-container -p 8081:8081 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+                        "
+                    '''
+                }
             }
         }
     }
