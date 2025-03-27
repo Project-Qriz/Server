@@ -1,6 +1,14 @@
 pipeline {
     agent any
 
+    environment {
+        DOCKER_IMAGE = 'qriz-api'
+        DOCKER_TAG = "${BUILD_NUMBER}"
+        AWS_REGION = 'ap-northeast-2'
+        ECR_REGISTRY = '314146328505.dkr.ecr.ap-northeast-2.amazonaws.com'
+        AWS_CREDENTIALS = 'aws-credentials'
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -10,8 +18,10 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t qriz-api:${BUILD_NUMBER} .'
-                sh 'docker tag qriz-api:${BUILD_NUMBER} qriz-api:latest'
+                sh """
+                    docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
+                    docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest
+                """
             }
         }
 
@@ -24,9 +34,11 @@ pipeline {
                         accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                     ]]) {
-                        sh 'aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com'
-                        sh 'docker tag qriz-api:latest 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest'
-                        sh 'docker push 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest'
+                        sh """
+                            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                            docker tag ${DOCKER_IMAGE}:latest 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+                            docker push 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+                        """
 
                         // 또는 내부 레지스트리를 사용하는 경우
                         // sh 'docker login your-registry -u username -p password'
