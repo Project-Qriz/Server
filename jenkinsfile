@@ -1,0 +1,59 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'dev', credentialsId: 'github-token', url: 'https://github.com/Project-Qriz/Server.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t qriz-api:${BUILD_NUMBER} .'
+                sh 'docker tag qriz-api:${BUILD_NUMBER} qriz-api:latest'
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                sh 'aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 314146328505.dkr.ecr.your-region.amazonaws.com'
+                sh 'docker tag qriz-api:latest 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest'
+                sh 'docker push 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest'
+
+                // 또는 내부 레지스트리를 사용하는 경우
+                // sh 'docker login your-registry -u username -p password'
+                // sh 'docker tag your-backend-app:latest your-registry/your-backend-app:latest'
+                // sh 'docker push your-registry/your-backend-app:latest'
+            }
+        }
+
+        stage('Deploy to Backend Server') {
+            steps {
+                // SSH를 통해 프라이빗 서버에 접속하여 새 이미지 배포
+                sh '''
+                    ssh -i dev-bastion.pem ec2-user@10.0.2.212 "
+                        docker pull 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest &&
+                        docker stop backend-container || true &&
+                        docker rm backend-container || true &&
+                        docker run -d --name backend-container -p 8081:8081 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+                    "
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '도커 이미지 빌드 및 배포가 성공적으로 완료되었습니다!'
+        }
+        failure {
+            echo '배포 중 오류가 발생했습니다.'
+            // 실패 시 이전 버전으로 롤백하는 로직 추가 가능
+        }
+        always {
+            // 불필요한 이미지 정리
+            sh 'docker rmi $(docker images -f "dangling=true" -q) || true'
+        }
+    }
+}
