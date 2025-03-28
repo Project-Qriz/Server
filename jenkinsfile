@@ -60,30 +60,38 @@ pipeline {
                         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                     ]
                 ]) {
-                    // AWS 자격 증명을 백엔드 서버에 전달
+                    // 실행할 스크립트 파일 생성
+                                writeFile file: 'deploy.sh', text: '''#!/bin/bash
+                    # 8081 포트를 사용하는 컨테이너 찾기
+                    CONTAINER_ID=$(docker ps | grep 8081 | awk '{print $1}')
+                    if [ ! -z "$CONTAINER_ID" ]; then
+                        echo "8081 포트를 사용하는 컨테이너 $CONTAINER_ID 를 중지합니다."
+                        docker stop $CONTAINER_ID
+                        docker rm $CONTAINER_ID
+                    fi
+
+                    # 기존 backend-container 제거
+                    docker rm -f backend-container || true
+
+                    # 새 이미지 가져오기 및 실행
+                    docker pull 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+                    docker run -d --name backend-container -p 8081:8081 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+                    '''
+
+                    // 스크립트 파일을 대상 서버로 전송하고 실행
                     sh '''
-                        # ECR 로그인 명령어 생성
-                        LOGIN_COMMAND=$(aws ecr get-login-password --region ap-northeast-2 | sed 's/$//' | sed 's/^//')
+                        chmod +x deploy.sh
+                        scp -i ${SSH_KEY} -o StrictHostKeyChecking=no deploy.sh ec2-user@10.0.2.212:~/deploy.sh
 
-                        # SSH를 통해 백엔드 서버에 명령 실행
                         ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ec2-user@10.0.2.212 "
-                            # ECR 로그인
-                            echo $LOGIN_COMMAND | docker login --username AWS --password-stdin 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com &&
+                            # AWS ECR 로그인
+                            export AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID}' &&
+                            export AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY}' &&
+                            aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com &&
 
-                            # 8081 포트 사용 중인 프로세스 확인 및 중지
-                            PORT_PID=\$(lsof -t -i:8081 || echo '')
-                            if [ ! -z \"\$PORT_PID\" ]; then
-                                echo '포트 8081을 사용 중인 프로세스를 중지합니다.'
-                                kill -9 \$PORT_PID || true
-                            fi
-
-                            # 모든 관련 컨테이너 중지 및 제거
-                            docker ps -a | grep -i backend | awk '{print \$1}' | xargs -r docker stop || true
-                            docker ps -a | grep -i backend | awk '{print \$1}' | xargs -r docker rm || true
-
-                            # 새 이미지 가져오기 및 실행
-                            docker pull 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest &&
-                            docker run -d --name backend-container -p 8081:8081 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+                            # 스크립트 실행
+                            chmod +x ~/deploy.sh &&
+                            ~/deploy.sh
                         "
                     '''
                 }
