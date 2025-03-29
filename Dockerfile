@@ -1,6 +1,11 @@
 FROM openjdk:11-jdk-slim as builder
 WORKDIR /app
+
+# 설정 파일을 위한 인자 추가
+ARG CONFIG_PATH=.
+
 COPY . .
+COPY ${CONFIG_PATH}/application-dev.properties /app/src/main/resources/
 
 # 권한 설정
 RUN chmod +x ./gradlew

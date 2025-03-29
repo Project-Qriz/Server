@@ -17,22 +17,17 @@ pipeline {
             }
         }
 
-        stage('Set Permissions') {
-            steps {
-                sh "sudo chown -R jenkins:jenkins ."  // Jenkins 사용자에게 소유권 부여 (jenkins는 실제 Jenkins 사용자명으로 변경)
-            }
-        }
-
         stage('Build Docker Image') {
             steps {
                 withCredentials([file(credentialsId: 'spring-dev-properties', variable: 'PROPERTIES_FILE')]) {
-                    // 빌드 전에 설정 파일 복사
-                    sh "mkdir -p src/main/resources/"
-                    sh "cp ${PROPERTIES_FILE} src/main/resources/application-dev.properties"
+                    // 임시 디렉토리 생성
+                    sh "mkdir -p temp_config"
+                    // 설정 파일을 임시 디렉토리에 복사
+                    sh "cp \${PROPERTIES_FILE} temp_config/application-dev.properties"
 
-                    // 이미지 빌드
+                    // Dockerfile에서 이 임시 디렉토리를 사용하도록 빌드 명령 수정
                     sh """
-                        docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
+                        docker build --build-arg CONFIG_PATH=temp_config -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
                         docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest
                     """
                 }
