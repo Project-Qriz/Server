@@ -7,6 +7,7 @@ pipeline {
         AWS_REGION = 'ap-northeast-2'
         ECR_REGISTRY = '314146328505.dkr.ecr.ap-northeast-2.amazonaws.com'
         AWS_CREDENTIALS = 'aws-credentials'
+        PROPERTIES_FILE = 'spring-dev-properties'
     }
 
     stages {
@@ -16,17 +17,25 @@ pipeline {
             }
         }
 
+        stage('Set Permissions') {
+            steps {
+                sh "sudo chown -R jenkins:jenkins ."  // Jenkins 사용자에게 소유권 부여 (jenkins는 실제 Jenkins 사용자명으로 변경)
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
-                // 빌드 전에 설정 파일 복사
-                sh "mkdir -p src/main/resources/"
-                sh "cp ${PROPERTIES_FILE} src/main/resources/application-dev.properties"
+                withCredentials([file(credentialsId: 'spring-dev-properties', variable: 'PROPERTIES_FILE')]) {
+                    // 빌드 전에 설정 파일 복사
+                    sh "mkdir -p src/main/resources/"
+                    sh "cp ${PROPERTIES_FILE} src/main/resources/application-dev.properties"
 
-                // 이미지 빌드
-                sh """
-                    docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
-                    docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest
-                """
+                    // 이미지 빌드
+                    sh """
+                        docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
+                        docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest
+                    """
+                }
             }
         }
 
@@ -82,7 +91,6 @@ pipeline {
                     # 새 이미지 가져오기 및 실행
                     docker pull 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
                     docker run -d --name backend-container -p 8081:8081 \\
-                      -v ~/application-dev.properties:/app/application-dev.properties \\
                       314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
                     '''
 
@@ -90,8 +98,6 @@ pipeline {
                     sh '''
                         chmod +x deploy.sh
                         scp -i ${SSH_KEY} -o StrictHostKeyChecking=no deploy.sh ec2-user@10.0.2.212:~/deploy.sh
-                        scp -i ${SSH_KEY} -o StrictHostKeyChecking=no ${PROPERTIES_FILE} ec2-user@10.0.2.212:~/Server/src/ \\
-                            main/resources/application-dev.properties
 
                         ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ec2-user@10.0.2.212 "
                             # AWS ECR 로그인
