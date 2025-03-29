@@ -53,6 +53,7 @@ pipeline {
             steps {
                 withCredentials([
                     sshUserPrivateKey(credentialsId: 'backend-server-ssh-key', keyFileVariable: 'SSH_KEY'),
+                    file(credentialsId: 'spring-dev-properties', variable: 'PROPERTIES_FILE'),
                     [
                         $class: 'AmazonWebServicesCredentialsBinding',
                         credentialsId: "${AWS_CREDENTIALS}",
@@ -75,13 +76,16 @@ pipeline {
 
                     # 새 이미지 가져오기 및 실행
                     docker pull 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
-                    docker run -d --name backend-container -p 8081:8081 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+                    docker run -d --name backend-container -p 8081:8081 \\
+                      -v ~/application-dev.properties:/app/application-dev.properties \\
+                      314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
                     '''
 
                     // 스크립트 파일을 대상 서버로 전송하고 실행
                     sh '''
                         chmod +x deploy.sh
                         scp -i ${SSH_KEY} -o StrictHostKeyChecking=no deploy.sh ec2-user@10.0.2.212:~/deploy.sh
+                        scp -i ${SSH_KEY} -o StrictHostKeyChecking=no ${PROPERTIES_FILE} ec2-user@10.0.2.212:~/application-dev.properties
 
                         ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ec2-user@10.0.2.212 "
                             # AWS ECR 로그인
