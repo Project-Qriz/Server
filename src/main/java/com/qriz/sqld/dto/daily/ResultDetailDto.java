@@ -28,12 +28,12 @@ public class ResultDetailDto {
         private String option2;
         private String option3;
         private String option4;
-        // 정답 (Option 엔티티에서 isAnswer가 true인 선택지의 내용)
-        private String answer;
+        // 정답 (Option 엔티티에서 isAnswer가 true인 선택지의 번호, 1부터 시작)
+        private Integer answer;
         // 해설
         private String solution;
-        // 사용자가 선택한 값
-        private String checked;
+        // 사용자가 선택한 값 (선택지 번호, 사용자가 풀지 않은 경우 null)
+        private Integer checked;
         // 채점 결과
         private boolean correction;
         // 그 외 추가 정보 (필요에 따라 사용)
@@ -54,35 +54,37 @@ public class ResultDetailDto {
                 String op4 = sortedOptions.size() > 3 ? sortedOptions.get(3).getContent() : null;
 
                 // 사용자 선택한 옵션의 인덱스 찾기 (1부터 시작)
-                String userCheckedOption = null;
-                for (int i = 0; i < sortedOptions.size(); i++) {
-                        if (sortedOptions.get(i).getId().equals(userActivity.getChecked())) {
-                                userCheckedOption = String.valueOf(i + 1);
-                                break;
+                Integer userCheckedOption = null;
+                if (userActivity.getChecked() != null) {
+                        for (int i = 0; i < sortedOptions.size(); i++) {
+                                if (sortedOptions.get(i).getId().equals(userActivity.getChecked())) {
+                                        userCheckedOption = i + 1;
+                                        break;
+                                }
                         }
                 }
 
                 // 정답 옵션의 인덱스 찾기 (1부터 시작)
-                String correctAnswer = null;
+                Integer correctAnswer = null;
                 for (int i = 0; i < sortedOptions.size(); i++) {
                         if (sortedOptions.get(i).isAnswer()) {
-                                correctAnswer = String.valueOf(i + 1);
+                                correctAnswer = i + 1;
                                 break;
                         }
                 }
 
                 return ResultDetailDto.builder()
-                                .skillName(question.getSkill().getKeyConcepts()) // 기존에 사용하던 값 (원한다면 title로 변경 가능)
+                                .skillName(question.getSkill().getKeyConcepts()) // 기존에 사용하던 값 (필요에 따라 title로 변경 가능)
                                 .questionText(question.getQuestion())
-                                .questionNum(userActivity.getQuestionNum()) // 추가된 문제 번호
+                                .questionNum(userActivity.getQuestionNum())
                                 .description(question.getDescription())
                                 .option1(op1)
                                 .option2(op2)
                                 .option3(op3)
                                 .option4(op4)
-                                .answer(correctAnswer) // 정답 선택지 번호
+                                .answer(correctAnswer) // 정답 선택지 번호 (int로 반환)
                                 .solution(question.getSolution())
-                                .checked(userCheckedOption) // 사용자가 선택한 옵션 번호
+                                .checked(userCheckedOption) // 사용자가 선택한 옵션 번호 (int로 반환, 없으면 null)
                                 .correction(userActivity.isCorrection())
                                 .testInfo(userActivity.getTestInfo())
                                 .skillId(question.getSkill().getId())
@@ -90,5 +92,4 @@ public class ResultDetailDto {
                                 .keyConcepts(question.getSkill().getKeyConcepts())
                                 .build();
         }
-
 }
