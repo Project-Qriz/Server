@@ -122,10 +122,18 @@ pipeline {
     post {
         success {
             echo '도커 이미지 빌드 및 배포가 성공적으로 완료되었습니다!'
+            slackSend(
+                color: 'good',
+                message: "빌드 성공 :white_check_mark: - ${env.JOB_NAME} #${env.BUILD_NUMBER} (<${env.BUILD_URL}|상세 보기>)"
+            )
         }
         failure {
             echo '배포 중 오류가 발생했습니다.'
-            // 실패 시 이전 버전으로 롤백하는 로직 추가 가능
+            slackSend(
+                color: 'danger',
+                message: "빌드 실패 :x: - ${env.JOB_NAME} #${env.BUILD_NUMBER} (<${env.BUILD_URL}|상세 보기>)"
+            )
+            // 실패 시 이전 버전으로 롤백하는 로직 추가 기능
         }
     }
 }
