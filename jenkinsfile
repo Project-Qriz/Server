@@ -18,6 +18,11 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
+                // 빌드 전에 설정 파일 복사
+                sh "mkdir -p src/main/resources/"
+                sh "cp ${PROPERTIES_FILE} src/main/resources/application-dev.properties"
+
+                // 이미지 빌드
                 sh """
                     docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
                     docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest
@@ -85,7 +90,8 @@ pipeline {
                     sh '''
                         chmod +x deploy.sh
                         scp -i ${SSH_KEY} -o StrictHostKeyChecking=no deploy.sh ec2-user@10.0.2.212:~/deploy.sh
-                        scp -i ${SSH_KEY} -o StrictHostKeyChecking=no ${PROPERTIES_FILE} ec2-user@10.0.2.212:~/application-dev.properties
+                        scp -i ${SSH_KEY} -o StrictHostKeyChecking=no ${PROPERTIES_FILE} ec2-user@10.0.2.212:~/Server/src/ \\
+                            main/resources/application-dev.properties
 
                         ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ec2-user@10.0.2.212 "
                             # AWS ECR 로그인
