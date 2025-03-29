@@ -20,14 +20,11 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 withCredentials([file(credentialsId: 'spring-dev-properties', variable: 'PROPERTIES_FILE')]) {
-                    // 임시 디렉토리 생성
-                    sh "mkdir -p temp_config"
-                    // 설정 파일을 임시 디렉토리에 복사
-                    sh "cp \${PROPERTIES_FILE} temp_config/application-dev.properties"
+                    // 파일 내용 읽기
+                    sh "cat \${PROPERTIES_FILE} > application-dev.properties"
 
-                    // Dockerfile에서 이 임시 디렉토리를 사용하도록 빌드 명령 수정
                     sh """
-                        docker build --build-arg CONFIG_PATH=temp_config -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
+                        docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
                         docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest
                     """
                 }
