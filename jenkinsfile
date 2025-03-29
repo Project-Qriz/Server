@@ -84,6 +84,18 @@ pipeline {
                     docker pull 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
                     docker run -d --name backend-container -p 8081:8081 \\
                       314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+
+                    # 사용하지 않는 Docker 이미지 정리
+                    echo "사용하지 않는 Docker 이미지를 정리합니다."
+
+                    # dangling 이미지(태그가 없는 이미지) 제거
+                    docker image prune -f
+
+                    # 현재 실행 중이 아닌 모든 컨테이너 제거
+                    docker container prune -f
+
+                    # 이전 버전의 qriz/api 이미지를 제외한 모든 이미지 유지 (최신 5개만 유지)
+                    docker images | grep "qriz/api" | grep -v "latest" | sort -r | awk 'NR>5 {print $3}' | xargs -r docker rmi
                     '''
 
                     // 스크립트 파일을 대상 서버로 전송하고 실행
