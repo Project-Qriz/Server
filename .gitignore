@@ -218,6 +218,7 @@ gradle-app.setting
 
 ### Custom Files
 application-dev.properties
+application-local.properties
 application-prod.yml
 application-test.yml
 
