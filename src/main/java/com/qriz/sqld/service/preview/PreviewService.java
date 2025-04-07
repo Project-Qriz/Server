@@ -20,6 +20,7 @@ import com.qriz.sqld.dto.exam.ExamReqDto;
 import com.qriz.sqld.dto.preview.PreviewTestResult;
 import com.qriz.sqld.dto.preview.QuestionDto;
 import com.qriz.sqld.dto.preview.ResultDto;
+import com.qriz.sqld.handler.ex.CustomApiException;
 import com.qriz.sqld.service.daily.DailyPlanService;
 import com.qriz.sqld.domain.preview.UserPreviewTestRepository;
 import lombok.RequiredArgsConstructor;
@@ -375,5 +376,54 @@ public class PreviewService {
         }
 
         return topConcepts;
+    }
+
+    @Transactional
+    public void resetPreviewTest(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // 프리뷰 테스트 활동 삭제
+        userActivityRepository.deleteByUserIdAndTestInfo(userId, "Preview Test");
+
+        // 스킬 정확도 초기화 (프리뷰에서만 저장된 항목에 한함)
+        List<SkillLevel> previewSkillLevels = skillLevelRepository.findByUser(user);
+        for (SkillLevel level : previewSkillLevels) {
+            level.setCurrentAccuracy(0f);
+            level.setLastUpdated(null);
+        }
+        skillLevelRepository.saveAll(previewSkillLevels);
+
+        // 프리뷰 테스트 기록 삭제
+        userPreviewTestRepository.deleteByUser(user);
+
+        // 상태 초기화
+        user.updatePreviewTestStatus(PreviewTestStatus.NOT_STARTED);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void resetSurveyAndPreview(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomApiException("User not found"));
+
+        // 1. 설문조사 삭제
+        surveyRepository.deleteByUserId(userId);
+
+        // 2. 프리뷰 테스트 기록 삭제
+        userPreviewTestRepository.deleteByUser(user);
+        userActivityRepository.deleteByUserIdAndTestInfo(userId, "Preview Test");
+
+        // 3. SkillLevel (정확도) 초기화
+        List<SkillLevel> skillLevels = skillLevelRepository.findByUser(user);
+        for (SkillLevel level : skillLevels) {
+            level.setCurrentAccuracy(0f);
+            level.setLastUpdated(null);
+        }
+        skillLevelRepository.saveAll(skillLevels);
+
+        // 4. 사용자 상태 초기화
+        user.updatePreviewTestStatus(PreviewTestStatus.NOT_STARTED);
+        userRepository.save(user);
     }
 }

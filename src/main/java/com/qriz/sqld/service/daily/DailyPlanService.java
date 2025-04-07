@@ -296,20 +296,50 @@ public class DailyPlanService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomApiException("사용자를 찾을 수 없습니다."));
 
-        // 프리뷰 테스트 상태 확인
         PreviewTestStatus status = user.getPreviewTestStatus();
-
         if (status == PreviewTestStatus.NOT_STARTED) {
             throw new CustomApiException("설문조사를 먼저 진행해 주세요.");
         } else if (status == PreviewTestStatus.SURVEY_COMPLETED) {
             throw new CustomApiException("프리뷰 테스트를 완료해 주세요.");
         }
 
-        // PREVIEW_SKIPPED 또는 PREVIEW_COMPLETED 상태일 때만 데일리 플랜 반환
+        // 데일리 플랜은 planDate 기준 오름차순으로 조회된다고 가정
         List<UserDaily> dailyPlans = userDailyRepository.findByUserIdWithPlannedSkillsOrderByPlanDateAsc(userId);
-        return dailyPlans.stream()
-                .map(UserDailyDto::new)
-                .collect(Collectors.toList());
+        List<UserDailyDto> dtos = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+
+        // 모든 데일리 플랜 DTO 생성 (available 관련 로직은 제거)
+        for (UserDaily daily : dailyPlans) {
+            dtos.add(new UserDailyDto(daily));
+        }
+
+        // isToday 플래그 설정: 단 하나의 후보만 선택하도록 함
+        boolean candidateFound = false;
+        for (UserDailyDto dto : dtos) {
+            if (!candidateFound) {
+                // 1. planDate가 오늘인 경우
+                if (dto.getPlanDate().isEqual(today)) {
+                    dto.setToday(true); // Lombok이 생성한 setter는 setToday()
+                    candidateFound = true;
+                }
+                // 2. 오늘 완료된 경우 (완료되었어도 오늘 진행한 것으로 표시)
+                else if (dto.getCompletionDate() != null && dto.getCompletionDate().isEqual(today)) {
+                    dto.setToday(true);
+                    candidateFound = true;
+                }
+                // 3. planDate가 오늘보다 이전이고 아직 완료되지 않은 경우(overdue)
+                else if (dto.getPlanDate().isBefore(today) && !dto.isCompleted()) {
+                    dto.setToday(true);
+                    candidateFound = true;
+                } else {
+                    dto.setToday(false);
+                }
+            } else {
+                dto.setToday(false);
+            }
+        }
+
+        return dtos;
     }
 
     private List<UserDaily> createNewDailyPlans(Long userId, int version) {
