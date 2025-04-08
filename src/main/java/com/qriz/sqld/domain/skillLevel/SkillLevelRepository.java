@@ -32,4 +32,7 @@ public interface SkillLevelRepository extends JpaRepository<SkillLevel, Long> {
     @Modifying
     @Query("DELETE FROM SkillLevel sl WHERE sl.user = :user")
     void deleteByUser(@Param("user") User user);
+
+    // 프리뷰 테스트 삭제용
+    List<SkillLevel> findByUser(User user);
 }

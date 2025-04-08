@@ -24,6 +24,7 @@ public class UserDailyDto {
     private List<SkillDto> plannedSkills;
     private boolean reviewDay;
     private boolean comprehensiveReviewDay;
+    private boolean isToday;
 
     public UserDailyDto(UserDaily userDaily) {
         this.id = userDaily.getId();
@@ -36,6 +37,7 @@ public class UserDailyDto {
                 .collect(Collectors.toList());
         this.reviewDay = userDaily.isReviewDay();
         this.comprehensiveReviewDay = userDaily.isComprehensiveReviewDay();
+        this.isToday = false;
     }
 
     @Getter
