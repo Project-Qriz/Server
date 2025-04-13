@@ -13,8 +13,6 @@ import com.qriz.sqld.domain.user.UserRepository;
 import com.qriz.sqld.handler.ex.CustomApiException;
 import com.qriz.sqld.mail.domain.EmailVerification.EmailVerification;
 import com.qriz.sqld.mail.domain.EmailVerification.EmailVerificationRepository;
-import com.qriz.sqld.mail.domain.PasswordResetToken.PasswordResetToken;
-import com.qriz.sqld.mail.domain.PasswordResetToken.PasswordResetTokenRepository;
 import com.qriz.sqld.mail.dto.EmailRespDto;
 import com.qriz.sqld.mail.dto.EmailRespDto.VerificationResult;
 
@@ -30,7 +28,7 @@ public class MailSendService {
     private final EmailService emailService;
     private final EmailVerificationRepository verificationRepository;
     private final UserRepository userRepository;
-    private static final String LOGO_PATH = "src/main/resources/static/images/logo.png";
+    private static final String LOGO_PATH = "classpath:static/images/logo.png";
     private static final String SENDER_EMAIL = "ori178205@gmail.com";
 
     // 인증번호 생성

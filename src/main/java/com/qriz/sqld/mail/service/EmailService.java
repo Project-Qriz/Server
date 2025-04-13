@@ -3,12 +3,14 @@ package com.qriz.sqld.mail.service;
 import javax.mail.MessagingException;
 import javax.mail.internet.MimeMessage;
 
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.core.io.Resource;
 
 import com.qriz.sqld.domain.user.User;
 import com.qriz.sqld.domain.user.UserRepository;
@@ -53,8 +55,15 @@ public class EmailService {
             helper.setSubject(title);
             helper.setText(content, true);
 
-            FileSystemResource file = new FileSystemResource(new File(imagePath));
-            helper.addInline(imageContentId, file);
+            Resource resource;
+            if (imagePath.startsWith("classpath:")) {
+                // 클래스패스 리소스로 로드 (예: "classpath:static/images/logo.png")
+                resource = new ClassPathResource(imagePath.substring("classpath:".length()));
+            } else {
+                // 파일 시스템 리소스로 로드
+                resource = new FileSystemResource(new File(imagePath));
+            }
+            helper.addInline(imageContentId, resource);
 
             mailSender.send(message);
         } catch (MessagingException e) {
