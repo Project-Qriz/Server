@@ -7,7 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 public class DaySubjectDetailsDto {
-    
+
     @Getter
     @AllArgsConstructor
     public static class Response {
@@ -19,27 +19,27 @@ public class DaySubjectDetailsDto {
 
     @Getter
     public static class SubjectDetails {
+        private Long skillId;
         private String title;
         private double totalScore;
-        private List<ItemScore> items;
+        private List<ItemScore> items = new ArrayList<>();
 
-        public SubjectDetails(String title) {
+        public SubjectDetails(Long skillId, String title) {
+            this.skillId = skillId;
             this.title = title;
-            this.items = new ArrayList<>();
         }
 
         public void addScore(String type, double score) {
-            ItemScore existingItem = items.stream()
-                    .filter(item -> item.getType().equals(type))
+            ItemScore existing = items.stream()
+                    .filter(i -> i.getType().equals(type))
                     .findFirst()
                     .orElse(null);
 
-            if (existingItem == null) {
-                items.add(new ItemScore(type, score));
+            if (existing == null) {
+                items.add(new ItemScore(skillId, type, score));
             } else {
-                existingItem.addScore(score);
+                existing.addScore(score);
             }
-
             totalScore += score;
         }
 
@@ -65,6 +65,7 @@ public class DaySubjectDetailsDto {
     @Getter
     @AllArgsConstructor
     public static class ItemScore {
+        private Long skillId;
         private String type;
         private double score;
 

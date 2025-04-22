@@ -308,46 +308,52 @@ public class DailyService {
 
     @Transactional(readOnly = true)
     public DaySubjectDetailsDto.Response getDaySubjectDetails(Long userId, String dayNumber) {
-        // UserDaily 엔티티에서 해당 데일리 정보 조회 (isArchived가 false인 경우)
+        // 1) 해당 일자의 UserDaily 조회
         UserDaily userDaily = userDailyRepository
                 .findByUserIdAndDayNumberAndIsArchivedFalse(userId, dayNumber)
-                .orElse(null);
-        // 데일리 정보가 없으면 기본값 false를 사용하거나 예외 처리할 수 있음
-        boolean passed = (userDaily != null) ? userDaily.isPassed() : false;
+                .orElseThrow(() -> new CustomApiException("해당 일자의 데일리 플랜을 찾을 수 없습니다."));
+        boolean passed = userDaily.isPassed();
 
+        // 2) 해당 dayNumber로 저장된 UserActivity 목록 조회
         List<UserActivity> activities = userActivityRepository.findByUserIdAndTestInfo(userId, dayNumber);
 
-        Map<String, DaySubjectDetailsDto.SubjectDetails> subjectDetailsMap = new HashMap<>();
+        // 3) 스킬별 집계용 Map과 결과 리스트 초기화
+        Map<Long, DaySubjectDetailsDto.SubjectDetails> subjectDetailsMap = new HashMap<>();
         List<DaySubjectDetailsDto.DailyResultDto> dailyResults = new ArrayList<>();
 
+        // 4) 각 활동(Activity)마다 점수 계산 및 DTO 매핑
         for (UserActivity activity : activities) {
             Question question = activity.getQuestion();
             Skill skill = question.getSkill();
+
+            Long skillId = skill.getId();
             String title = skill.getTitle();
-            String keyConcepts = skill.getKeyConcepts();
+            String type = skill.getKeyConcepts(); // 세부 항목명
+            double score = activity.isCorrection()
+                    ? getPointsForDifficulty(question.getDifficulty())
+                    : 0.0;
 
-            // getPointsForDifficulty()를 사용하여 점수 계산
-            double score = activity.isCorrection() ? getPointsForDifficulty(question.getDifficulty()) : 0.0;
+            // SubjectDetails 객체 생성 또는 가져와서 해당 type으로 점수 누적
+            subjectDetailsMap
+                    .computeIfAbsent(skillId, id -> new DaySubjectDetailsDto.SubjectDetails(id, title))
+                    .addScore(type, score);
 
-            subjectDetailsMap.computeIfAbsent(title, k -> new DaySubjectDetailsDto.SubjectDetails(title))
-                    .addScore(keyConcepts, score);
-
-            // 각 activity에 대한 DailyResultDto 생성
-            DaySubjectDetailsDto.DailyResultDto resultDto = new DaySubjectDetailsDto.DailyResultDto(
-                    skill.getKeyConcepts(),
+            // 문제별 상세 결과 DTO 추가
+            dailyResults.add(new DaySubjectDetailsDto.DailyResultDto(
+                    title,
                     question.getQuestion(),
-                    activity.isCorrection());
-            dailyResults.add(resultDto);
+                    activity.isCorrection()));
         }
 
+        // 5) Map → List 변환
         List<DaySubjectDetailsDto.SubjectDetails> subjectDetailsList = new ArrayList<>(subjectDetailsMap.values());
 
-        for (DaySubjectDetailsDto.SubjectDetails subject : subjectDetailsList) {
-            subject.adjustTotalScore();
-        }
-
-        // Response 객체 생성 시 passed 필드도 전달
-        return new DaySubjectDetailsDto.Response(dayNumber, passed, subjectDetailsList, dailyResults);
+        // 6) 최종 Response DTO 반환
+        return new DaySubjectDetailsDto.Response(
+                dayNumber,
+                passed,
+                subjectDetailsList,
+                dailyResults);
     }
 
     @Transactional(readOnly = true)
