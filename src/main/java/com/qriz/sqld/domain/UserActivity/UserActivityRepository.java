@@ -55,4 +55,7 @@ public interface UserActivityRepository extends JpaRepository<UserActivity, Long
         List<UserActivity> findByExamSession(UserExamSession examSession);
 
         void deleteByExamSession(UserExamSession examSession);
+
+        // 프리뷰 테스트 삭제용
+        void deleteByUserIdAndTestInfo(Long userId, String testInfo);
 }

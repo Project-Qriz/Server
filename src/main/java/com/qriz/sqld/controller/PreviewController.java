@@ -62,4 +62,18 @@ public class PreviewController {
         ResultDto.Response analysisResult = testService.analyzePreviewTestResult(loginUser.getUser().getId());
         return new ResponseEntity<>(new ResponseDto<>(1, "프리뷰 테스트 분석 결과 조회 성공", analysisResult), HttpStatus.OK);
     }
+
+    // 프리뷰 테스트 기록 삭제
+    @PostMapping("/reset")
+    public ResponseEntity<?> resetPreviewTest(@AuthenticationPrincipal LoginUser loginUser) {
+        testService.resetPreviewTest(loginUser.getUser().getId());
+        return new ResponseEntity<>(new ResponseDto<>(1, "프리뷰 테스트 초기화 성공", null), HttpStatus.OK);
+    }
+
+    // 프리뷰 테스트 기록 + 설문조사 데이터 삭제
+    @PostMapping("/reset-all")
+    public ResponseEntity<?> resetAllSurveyAndPreview(@AuthenticationPrincipal LoginUser loginUser) {
+        testService.resetSurveyAndPreview(loginUser.getUser().getId());
+        return new ResponseEntity<>(new ResponseDto<>(1, "설문조사 및 프리뷰 테스트 초기화 성공", null), HttpStatus.OK);
+    }
 }

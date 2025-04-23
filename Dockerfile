@@ -1,6 +1,8 @@
 FROM openjdk:11-jdk-slim as builder
 WORKDIR /app
+
 COPY . .
+COPY application-dev.properties /app/src/main/resources/
 
 # 권한 설정
 RUN chmod +x ./gradlew
@@ -19,4 +21,4 @@ COPY --from=builder /app/build/libs/*.jar app.jar
 
 EXPOSE 8081
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-Dspring.profiles.active=dev", "-jar", "app.jar"]

@@ -17,6 +17,7 @@ import com.qriz.sqld.dto.ResponseDto;
 import com.qriz.sqld.dto.daily.ResultDetailDto;
 import com.qriz.sqld.dto.daily.DaySubjectDetailsDto;
 import com.qriz.sqld.dto.daily.UserDailyDto;
+import com.qriz.sqld.dto.daily.UserDailyDto.DailyDetailAndStatusDto;
 import com.qriz.sqld.dto.daily.WeeklyTestResultDto;
 import com.qriz.sqld.dto.test.TestReqDto;
 import com.qriz.sqld.dto.test.TestRespDto;
@@ -137,27 +138,47 @@ public class DailyController {
          * @param loginUser
          * @return
          */
-        @GetMapping("/details/{dayNumber}")
-        public ResponseEntity<?> getDailyDetails(@PathVariable String dayNumber,
+        @GetMapping("/detail-status/{dayNumber}")
+        public ResponseEntity<?> getDailyDetailWithStatus(@PathVariable String dayNumber,
                         @AuthenticationPrincipal LoginUser loginUser) {
-                UserDailyDto.DailyDetailsDto details = dailyService.getDailyDetails(loginUser.getUser().getId(),
-                                dayNumber);
-                return new ResponseEntity<>(new ResponseDto<>(1, "일일 상세 정보 조회 성공", details), HttpStatus.OK);
+                DailyDetailAndStatusDto detailStatus = dailyService
+                                .getDailyDetailWithStatus(loginUser.getUser().getId(), dayNumber);
+                return new ResponseEntity<>(new ResponseDto<>(1, "일일 상세 정보 조회 성공", detailStatus), HttpStatus.OK);
         }
 
         /**
-         * 특정 Day의 테스트 상태 확인
+         * 플랜 재생성
+         * 
+         * @param loginUser
+         * @return
+         */
+        @PostMapping("/regenerate")
+        public ResponseEntity<?> regenerateDailyPlan(@AuthenticationPrincipal LoginUser loginUser) {
+                try {
+                        dailyPlanService.regenerateDailyPlan(loginUser.getUser().getId());
+                        return new ResponseEntity<>(
+                                        new ResponseDto<>(1, "새로운 학습 플랜이 생성되었습니다.", null),
+                                        HttpStatus.OK);
+                } catch (CustomApiException e) {
+                        return new ResponseEntity<>(
+                                        new ResponseDto<>(-1, e.getMessage(), null),
+                                        HttpStatus.BAD_REQUEST);
+                }
+        }
+
+        /**
+         * 오늘 공부할 개념 불러오기
          * 
          * @param dayNumber
          * @param loginUser
          * @return
          */
-        @GetMapping("/test-status/{dayNumber}")
-        public ResponseEntity<?> getDailyTestStatus(@PathVariable String dayNumber,
+        @GetMapping("/concept/{dayNumber}")
+        public ResponseEntity<?> getDailyConcepts(@PathVariable String dayNumber,
                         @AuthenticationPrincipal LoginUser loginUser) {
-                UserDailyDto.TestStatusDto status = dailyService.getDailyTestStatus(loginUser.getUser().getId(),
-                                dayNumber);
-                return new ResponseEntity<>(new ResponseDto<>(1, "데일리 테스트 상태 조회 성공", status), HttpStatus.OK);
+                List<UserDailyDto.DailySkillDto> dailyConcepts = dailyService
+                                .getDailyConcepts(loginUser.getUser().getId(), dayNumber);
+                return new ResponseEntity<>(new ResponseDto<>(1, "오늘 공부할 개념 불러오기 성공", dailyConcepts), HttpStatus.OK);
         }
 
         // 테스트용

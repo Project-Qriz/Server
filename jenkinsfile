@@ -1,0 +1,139 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE = 'qriz-api'
+        DOCKER_TAG = "${BUILD_NUMBER}"
+        AWS_REGION = 'ap-northeast-2'
+        ECR_REGISTRY = '314146328505.dkr.ecr.ap-northeast-2.amazonaws.com'
+        AWS_CREDENTIALS = 'aws-credentials'
+        PROPERTIES_FILE = 'spring-dev-properties'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'dev', credentialsId: 'github-token', url: 'https://github.com/Project-Qriz/Server.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                withCredentials([file(credentialsId: 'spring-dev-properties', variable: 'PROPERTIES_FILE')]) {
+                    // 파일 내용 읽기
+                    sh "cat \${PROPERTIES_FILE} > application-dev.properties"
+
+                    sh """
+                        docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
+                        docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest
+                    """
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: "${AWS_CREDENTIALS}",
+                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                    ]]) {
+                        sh """
+                            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                            docker tag ${DOCKER_IMAGE}:latest 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+                            docker push 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+                        """
+
+                        // 또는 내부 레지스트리를 사용하는 경우
+                        // sh 'docker login your-registry -u username -p password'
+                        // sh 'docker tag your-backend-app:latest your-registry/your-backend-app:latest'
+                        // sh 'docker push your-registry/your-backend-app:latest'
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Backend Server') {
+            steps {
+                withCredentials([
+                    sshUserPrivateKey(credentialsId: 'backend-server-ssh-key', keyFileVariable: 'SSH_KEY'),
+                    file(credentialsId: 'spring-dev-properties', variable: 'PROPERTIES_FILE'),
+                    [
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: "${AWS_CREDENTIALS}",
+                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                    ]
+                ]) {
+                    // 실행할 스크립트 파일 생성
+                                writeFile file: 'deploy.sh', text: '''#!/bin/bash
+                    # 8081 포트를 사용하는 컨테이너 찾기
+                    CONTAINER_ID=$(docker ps | grep 8081 | awk '{print $1}')
+                    if [ ! -z "$CONTAINER_ID" ]; then
+                        echo "8081 포트를 사용하는 컨테이너 $CONTAINER_ID 를 중지합니다."
+                        docker stop $CONTAINER_ID
+                        docker rm $CONTAINER_ID
+                    fi
+
+                    # 기존 backend-container 제거
+                    docker rm -f backend-container || true
+
+                    # 새 이미지 가져오기 및 실행
+                    docker pull 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+                    docker run -d --name backend-container -p 8081:8081 \\
+                      314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+
+                    # 사용하지 않는 Docker 이미지 정리
+                    echo "사용하지 않는 Docker 이미지를 정리합니다."
+
+                    # dangling 이미지(태그가 없는 이미지) 제거
+                    docker image prune -f
+
+                    # 현재 실행 중이 아닌 모든 컨테이너 제거
+                    docker container prune -f
+
+                    # 이전 버전의 qriz/api 이미지를 제외한 모든 이미지 유지 (최신 5개만 유지)
+                    docker images | grep "qriz/api" | grep -v "latest" | sort -r | awk 'NR>5 {print $3}' | xargs -r docker rmi
+                    '''
+
+                    // 스크립트 파일을 대상 서버로 전송하고 실행
+                    sh '''
+                        chmod +x deploy.sh
+                        scp -i ${SSH_KEY} -o StrictHostKeyChecking=no deploy.sh ec2-user@10.0.2.212:~/deploy.sh
+
+                        ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ec2-user@10.0.2.212 "
+                            # AWS ECR 로그인
+                            export AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID}' &&
+                            export AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY}' &&
+                            aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com &&
+
+                            # 스크립트 실행
+                            chmod +x ~/deploy.sh &&
+                            ~/deploy.sh
+                        "
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '도커 이미지 빌드 및 배포가 성공적으로 완료되었습니다!'
+            slackSend(
+                color: 'good',
+                message: "빌드 성공 :white_check_mark: - ${env.JOB_NAME} #${env.BUILD_NUMBER} (<${env.BUILD_URL}|상세 보기>)"
+            )
+        }
+        failure {
+            echo '배포 중 오류가 발생했습니다.'
+            slackSend(
+                color: 'danger',
+                message: "빌드 실패 :x: - ${env.JOB_NAME} #${env.BUILD_NUMBER} (<${env.BUILD_URL}|상세 보기>)"
+            )
+            // 실패 시 이전 버전으로 롤백하는 로직 추가 기능
+        }
+    }
+}

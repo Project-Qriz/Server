@@ -41,6 +41,7 @@ public class DailyPlanService {
     private final WeekendPlanUtil weekendPlanUtil;
     private final UserActivityRepository userActivityRepository;
     private final DKTService dktService;
+    private final PlanVersionService planVersionService;
 
     private final Logger log = LoggerFactory.getLogger(DailyPlanService.class);
 
@@ -295,19 +296,116 @@ public class DailyPlanService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomApiException("사용자를 찾을 수 없습니다."));
 
-        // 프리뷰 테스트 상태 확인
         PreviewTestStatus status = user.getPreviewTestStatus();
-
         if (status == PreviewTestStatus.NOT_STARTED) {
             throw new CustomApiException("설문조사를 먼저 진행해 주세요.");
         } else if (status == PreviewTestStatus.SURVEY_COMPLETED) {
             throw new CustomApiException("프리뷰 테스트를 완료해 주세요.");
         }
 
-        // PREVIEW_SKIPPED 또는 PREVIEW_COMPLETED 상태일 때만 데일리 플랜 반환
+        // 데일리 플랜은 planDate 기준 오름차순으로 조회된다고 가정
         List<UserDaily> dailyPlans = userDailyRepository.findByUserIdWithPlannedSkillsOrderByPlanDateAsc(userId);
-        return dailyPlans.stream()
-                .map(UserDailyDto::new)
+        List<UserDailyDto> dtos = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+
+        // 모든 데일리 플랜 DTO 생성 (available 관련 로직은 제거)
+        for (UserDaily daily : dailyPlans) {
+            dtos.add(new UserDailyDto(daily));
+        }
+
+        // isToday 플래그 설정: 단 하나의 후보만 선택하도록 함
+        boolean candidateFound = false;
+        for (UserDailyDto dto : dtos) {
+            if (!candidateFound) {
+                // 1. planDate가 오늘인 경우
+                if (dto.getPlanDate().isEqual(today)) {
+                    dto.setToday(true); // Lombok이 생성한 setter는 setToday()
+                    candidateFound = true;
+                }
+                // 2. 오늘 완료된 경우 (완료되었어도 오늘 진행한 것으로 표시)
+                else if (dto.getCompletionDate() != null && dto.getCompletionDate().isEqual(today)) {
+                    dto.setToday(true);
+                    candidateFound = true;
+                }
+                // 3. planDate가 오늘보다 이전이고 아직 완료되지 않은 경우(overdue)
+                else if (dto.getPlanDate().isBefore(today) && !dto.isCompleted()) {
+                    dto.setToday(true);
+                    candidateFound = true;
+                } else {
+                    dto.setToday(false);
+                }
+            } else {
+                dto.setToday(false);
+            }
+        }
+
+        return dtos;
+    }
+
+    private List<UserDaily> createNewDailyPlans(Long userId, int version) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // frequency 내림차순으로 정렬된 스킬 리스트 가져오기
+        List<Skill> sortedSkills = skillRepository.findAll().stream()
+                .sorted(Comparator.comparing(Skill::getFrequency).reversed())
                 .collect(Collectors.toList());
+
+        LocalDate startDate = LocalDate.now();
+        List<UserDaily> dailyPlans = new ArrayList<>();
+
+        for (int day = 1; day <= 30; day++) {
+            UserDaily userDaily = new UserDaily();
+            userDaily.setUser(user);
+            userDaily.setDayNumber("Day" + day);
+            userDaily.setCompleted(false);
+            userDaily.setPlanDate(startDate.plusDays(day - 1));
+            userDaily.setPlanVersion(version); // 버전 정보 설정
+            userDaily.setArchived(false); // 새로운 플랜은 아카이브되지 않은 상태
+
+            if (day <= 21) { // Week 1-3
+                if (day % 7 == 6 || day % 7 == 0) {
+                    userDaily.setPlannedSkills(new ArrayList<>());
+                    userDaily.setReviewDay(true);
+                } else {
+                    int weekday = getWeekdayCount(day);
+                    if (weekday > 0 && weekday <= 15) {
+                        int skillIndex = (weekday - 1) * 2;
+                        List<Skill> daySkills = Arrays.asList(
+                                sortedSkills.get(skillIndex),
+                                sortedSkills.get(skillIndex + 1));
+                        userDaily.setPlannedSkills(daySkills);
+                        userDaily.setReviewDay(false);
+                    }
+                }
+            } else {
+                userDaily.setPlannedSkills(null);
+                userDaily.setReviewDay(false);
+                userDaily.setComprehensiveReviewDay(true);
+            }
+
+            dailyPlans.add(userDaily);
+        }
+
+        return dailyPlans;
+    }
+
+    @Transactional
+    public void regenerateDailyPlan(Long userId) {
+        // 1. 재생성 가능 여부 검증
+        planVersionService.validatePlanRegeneration(userId);
+
+        // 2. 오래된 버전 정리
+        planVersionService.cleanupOldVersions(userId);
+
+        // 3. 현재 플랜 아카이브
+        planVersionService.archiveCurrentPlan(userId);
+
+        // 4. 새 버전 생성
+        int newVersion = planVersionService.getNextVersion(userId);
+
+        // 5. 새로운 플랜 생성
+        List<UserDaily> newPlans = createNewDailyPlans(userId, newVersion);
+        userDailyRepository.saveAll(newPlans);
     }
 }

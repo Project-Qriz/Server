@@ -10,6 +10,7 @@ import javax.persistence.Id;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 
+import com.qriz.sqld.domain.daily.UserDaily;
 import com.qriz.sqld.domain.exam.UserExamSession;
 import com.qriz.sqld.domain.question.Question;
 import com.qriz.sqld.domain.user.User;
@@ -63,8 +64,7 @@ public class UserActivity {
     /**
      * 사용자가 체크한 정답
      */
-    @Column(columnDefinition = "TEXT")
-    private String checked;
+    private Long checked;
 
     /**
      * 소요 시간
@@ -85,4 +85,8 @@ public class UserActivity {
      * 푼 날짜
      */
     private LocalDateTime date;
+
+    @ManyToOne
+    @JoinColumn(name = "daily_id")
+    private UserDaily userDaily; // 어떤 Day의 활동인지 참조
 }

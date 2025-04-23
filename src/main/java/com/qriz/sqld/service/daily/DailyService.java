@@ -2,6 +2,8 @@ package com.qriz.sqld.service.daily;
 
 import com.qriz.sqld.domain.question.Question;
 import com.qriz.sqld.domain.question.QuestionRepository;
+import com.qriz.sqld.domain.question.option.Option;
+import com.qriz.sqld.domain.question.option.OptionRepository;
 import com.qriz.sqld.domain.skill.Skill;
 import com.qriz.sqld.domain.user.User;
 import com.qriz.sqld.domain.user.UserRepository;
@@ -15,6 +17,7 @@ import com.qriz.sqld.dto.daily.ResultDetailDto;
 import com.qriz.sqld.dto.daily.DailyScoreDto;
 import com.qriz.sqld.dto.daily.DaySubjectDetailsDto;
 import com.qriz.sqld.dto.daily.UserDailyDto;
+import com.qriz.sqld.dto.daily.UserDailyDto.DailyDetailAndStatusDto;
 import com.qriz.sqld.dto.daily.WeeklyTestResultDto;
 import com.qriz.sqld.dto.test.TestReqDto;
 import com.qriz.sqld.dto.test.TestRespDto;
@@ -39,6 +42,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -54,6 +58,7 @@ public class DailyService {
     private final ClipRepository clipRepository;
     private final DailyPlanService dailyPlanService;
     private final DKTService dktService;
+    private final OptionRepository optionRepository;
 
     private final Logger log = LoggerFactory.getLogger(DailyService.class);
 
@@ -63,9 +68,6 @@ public class DailyService {
 
     /**
      * 오늘의 데일리 테스트 문제를 가져오기
-     * 
-     * @param user 현재 사용자
-     * @return 데일리 테스트 문제 목록
      */
     @Transactional
     public List<TestRespDto.DailyRespDto> getDailyTestQuestionsByDay(Long userId, String dayNumber) {
@@ -80,39 +82,26 @@ public class DailyService {
             throw new CustomApiException("이미 완료된 테스트이거나 재시험 자격이 없습니다.");
         }
 
-        // 재시험 여부 확인
-        boolean isRetest = userDaily.getAttemptCount() > 0 && userDaily.isRetestEligible();
-
-        if (isRetest) {
-            // 재시험인 경우 이전 시도의 문제들과 선택지 순서를 유지
-            List<UserActivity> previousActivities = userActivityRepository
-                    .findByUserIdAndTestInfoOrderByQuestionNumAsc(userId, dayNumber);
-
-            return previousActivities.stream()
-                    .map(activity -> TestRespDto.DailyRespDto.createWithOriginalOrder(activity.getQuestion()))
-                    .collect(Collectors.toList());
+        // 첫 시도와 재시험 모두 동일한 로직으로 처리
+        List<Question> questions;
+        if (userDaily.getPlannedSkills() == null) {
+            questions = getWeekFourQuestions(userId, userDaily);
+        } else if (userDaily.isReviewDay()) {
+            questions = weekendPlanUtil.getWeekendQuestions(userId, userDaily);
         } else {
-            // 첫 시도인 경우 문제를 가져오고 선택지를 랜덤화
-            List<Question> questions;
-            if (userDaily.getPlannedSkills() == null) {
-                questions = getWeekFourQuestions(userId, userDaily);
-            } else if (userDaily.isReviewDay()) {
-                questions = weekendPlanUtil.getWeekendQuestions(userId, userDaily);
-            } else {
-                questions = getRegularDayQuestions(userDaily);
-            }
-
-            // 랜덤화된 선택지로 DTO 생성
-            return questions.stream()
-                    .map(TestRespDto.DailyRespDto::new) // 랜덤화된 선택지를 가진 DTO 생성
-                    .collect(Collectors.toList());
+            questions = getRegularDayQuestions(userDaily);
         }
+
+        // 모든 경우에 랜덤화된 선택지만 반환하도록 통일
+        return questions.stream()
+                .map(q -> new TestRespDto.DailyRespDto(q, Objects.hash(q.getId(), userId, dayNumber)))
+                .collect(Collectors.toList());
+
     }
 
     private List<Question> getWeekFourQuestions(Long userId, UserDaily todayPlan) {
         LocalDateTime startDateTime = todayPlan.getPlanDate().minusWeeks(3).atStartOfDay();
         LocalDateTime endDateTime = todayPlan.getPlanDate().atTime(23, 59, 59);
-
         List<UserActivity> activities = userActivityRepository.findByUserIdAndDateBetween(
                 userId, startDateTime, endDateTime);
         List<Double> predictions = dktService.getPredictions(userId, activities);
@@ -123,7 +112,7 @@ public class DailyService {
         return questionRepository.findRandomQuestionsBySkillsAndCategory(
                 todayPlan.getPlannedSkills(),
                 2, // 데일리 카테고리 값
-                10 // 데일리 테스트 문제 수
+                20 // 문제 수
         );
     }
 
@@ -134,48 +123,50 @@ public class DailyService {
                 .map(Long::valueOf)
                 .limit(5)
                 .collect(Collectors.toList());
-
-        return questionRepository.findRandomQuestionsBySkillIdsAndCategory(sortedSkillIds, 2, 10); // 데일리 카테고리, 10문제
+        return questionRepository.findRandomQuestionsBySkillIdsAndCategory(sortedSkillIds, 2, 10);
     }
 
     /**
      * 데일리 테스트 제출 처리
-     * 
-     * @param user             현재 사용자
-     * @param testSubmitReqDto 테스트 제출 데이터
-     * @return 테스트 제출 결과 목록
      */
     @Transactional
     public List<TestRespDto.TestSubmitRespDto> processDailyTestSubmission(Long userId, String dayNumber,
             TestReqDto testSubmitReqDto) {
         UserDaily userDaily = userDailyRepository.findByUserIdAndDayNumber(userId, dayNumber)
                 .orElseThrow(() -> new CustomApiException("해당 일자의 데일리 플랜을 찾을 수 없습니다."));
-
         if (userDaily.isPassed() || (userDaily.getAttemptCount() > 0 && !userDaily.isRetestEligible())) {
             throw new CustomApiException("이미 완료된 테스트이거나 재시험 자격이 없습니다.");
         }
-
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomApiException("사용자를 찾을 수 없습니다."));
-
         List<TestRespDto.TestSubmitRespDto> results = new ArrayList<>();
-        int correctCount = 0;
 
         for (TestReqDto.TestSubmitReqDto activity : testSubmitReqDto.getActivities()) {
             Question question = questionRepository.findById(activity.getQuestion().getQuestionId())
                     .orElseThrow(() -> new CustomApiException("문제를 찾을 수 없습니다."));
+
+            // 제출된 optionId를 통해 Option 엔티티 조회
+            Option submittedOption = optionRepository.findById(activity.getOptionId())
+                    .orElseThrow(() -> new CustomApiException("선택한 옵션을 찾을 수 없습니다."));
+
+            // 해당 옵션이 실제 이 문제에 속하는지 확인
+            if (!submittedOption.getQuestion().getId().equals(question.getId())) {
+                throw new CustomApiException("선택한 옵션이 해당 문제와 일치하지 않습니다.");
+            }
+
+            // 정답 여부 판별
+            boolean isCorrect = submittedOption.isAnswer();
 
             UserActivity userActivity = new UserActivity();
             userActivity.setUser(user);
             userActivity.setQuestion(question);
             userActivity.setTestInfo(dayNumber);
             userActivity.setQuestionNum(activity.getQuestionNum());
-            userActivity.setChecked(activity.getChecked());
+            userActivity.setChecked(activity.getOptionId());
             userActivity.setTimeSpent(activity.getTimeSpent());
-            userActivity.setCorrection(question.getAnswer().equals(activity.getChecked()));
+            userActivity.setCorrection(isCorrect);
             userActivity.setDate(LocalDateTime.now());
-            double score = calculateScore(activity, question);
-            userActivity.setScore(score);
+            userActivity.setUserDaily(userDaily);
 
             userActivityRepository.save(userActivity);
 
@@ -186,60 +177,58 @@ public class DailyService {
                             question.getId(),
                             getCategoryName(question.getCategory())),
                     activity.getQuestionNum(),
-                    activity.getChecked(),
+                    String.valueOf(activity.getOptionId()),
                     activity.getTimeSpent(),
-                    userActivity.isCorrection());
-
-            if (userActivity.isCorrection()) {
-                correctCount++;
-            }
-
+                    isCorrect);
             results.add(result);
         }
 
-        boolean isPassed = correctCount > 5;
+        // 전체 점수 계산 및 플랜 상태 업데이트
+        double totalPossibleScore = testSubmitReqDto.getActivities().stream()
+                .mapToDouble(activity -> {
+                    Question question = questionRepository.findById(activity.getQuestion().getQuestionId())
+                            .orElseThrow(() -> new CustomApiException("문제를 찾을 수 없습니다."));
+                    return getPointsForDifficulty(question.getDifficulty());
+                }).sum();
+        double userScore = testSubmitReqDto.getActivities().stream()
+                .mapToDouble(activity -> {
+                    Question question = questionRepository.findById(activity.getQuestion().getQuestionId())
+                            .orElseThrow(() -> new CustomApiException("문제를 찾을 수 없습니다."));
+                    Option option = optionRepository.findById(activity.getOptionId())
+                            .orElseThrow(() -> new CustomApiException("선택한 옵션을 찾을 수 없습니다."));
+                    return option.isAnswer() ? getPointsForDifficulty(question.getDifficulty()) : 0;
+                }).sum();
+        boolean isPassed = userScore >= totalPossibleScore * 0.7;
         userDaily.updateTestStatus(isPassed);
-
         if (isPassed) {
             userDaily.setPassed(true);
             userDaily.setRetestEligible(false);
         } else if (userDaily.getAttemptCount() >= 2) {
             userDaily.setRetestEligible(false);
         }
-
         userDailyRepository.save(userDaily);
 
-        // Clipped 엔티티 저장 로직
         if (isPassed || userDaily.getAttemptCount() >= 2) {
             for (TestRespDto.TestSubmitRespDto result : results) {
-                UserActivity userActivity = userActivityRepository.findById(result.getActivityId())
+                UserActivity ua = userActivityRepository.findById(result.getActivityId())
                         .orElseThrow(() -> new CustomApiException("UserActivity를 찾을 수 없습니다."));
-
                 Clipped clipped = new Clipped();
-                clipped.setUserActivity(userActivity);
+                clipped.setUserActivity(ua);
                 clipped.setDate(LocalDateTime.now());
                 clipRepository.save(clipped);
             }
         }
-
         int day = Integer.parseInt(dayNumber.replace("Day", ""));
-        if (day % 7 == 5 && day <= 19) { // Day5, Day12, Day19 완료 시
+        if (day % 7 == 5 && day <= 19) {
             dailyPlanService.updateWeekendPlan(userId, day);
         }
-
         return results;
     }
 
-    private double calculateScore(TestReqDto.TestSubmitReqDto activity, Question question) {
-        return question.getAnswer().equals(activity.getChecked()) ? 10.0 : 0.0;
+    private int getPointsForDifficulty(Integer difficulty) {
+        return 5;
     }
 
-    /**
-     * 카테고리 번호에 해당하는 카테고리 이름 반환
-     * 
-     * @param category 카테고리 번호
-     * @return 카테고리 이름
-     */
     private String getCategoryName(int category) {
         switch (category) {
             case 1:
@@ -255,49 +244,19 @@ public class DailyService {
 
     /**
      * 오늘의 공부 결과 - 문제 상세보기
-     * 
-     * @param userId     로그인 사용자 아이디
-     * @param dayNumber  데일리 정보
-     * @param questionId 문제 아이디
-     * @return
+     * 수정: ResultDetailDto.from() 메서드를 사용하여 Option 엔티티 기반 정보를 반영
      */
     @Transactional(readOnly = true)
     public ResultDetailDto getDailyResultDetail(Long userId, String dayNumber, Long questionId) {
-        log.info("Getting daily result detail for userId: {}, dayNumber: {}, questionId: {}", userId, dayNumber,
-                questionId);
-
+        log.info("Getting daily result detail for userId: {}, dayNumber: {}, questionId: {}",
+                userId, dayNumber, questionId);
         String testInfo = dayNumber;
-        log.info("Constructed testInfo: {}", testInfo);
-
         UserActivity userActivity = userActivityRepository
                 .findByUserIdAndTestInfoAndQuestionId(userId, testInfo, questionId)
-                .orElseThrow(() -> {
-                    log.error("UserActivity not found for userId: {}, testInfo: {}, questionId: {}", userId, testInfo,
-                            questionId);
-                    return new CustomApiException("해당 문제의 풀이 결과를 찾을 수 없습니다.");
-                });
-
-        log.info("UserActivity found: {}", userActivity);
-
+                .orElseThrow(() -> new CustomApiException("해당 문제의 풀이 결과를 찾을 수 없습니다."));
         Question question = userActivity.getQuestion();
-        Skill skill = question.getSkill();
-
-        ResultDetailDto result = ResultDetailDto.builder()
-                .skillName(skill.getKeyConcepts())
-                .question(question.getQuestion())
-                .question(question.getDescription())
-                .option1(question.getOption1())
-                .option2(question.getOption2())
-                .option3(question.getOption3())
-                .option4(question.getOption4())
-                .answer(question.getAnswer())
-                .solution(question.getSolution())
-                .checked(userActivity.getChecked())
-                .correction(userActivity.isCorrection())
-                .build();
-
-        log.info("DailyResultDetailDto created: {}", result);
-
+        // ResultDetailDto.from() 내부에서 getSortedOptions()를 사용하여 변경된 구조를 반영
+        ResultDetailDto result = ResultDetailDto.from(question, userActivity);
         return result;
     }
 
@@ -349,75 +308,131 @@ public class DailyService {
 
     @Transactional(readOnly = true)
     public DaySubjectDetailsDto.Response getDaySubjectDetails(Long userId, String dayNumber) {
+        // 1) 해당 일자의 UserDaily 조회
+        UserDaily userDaily = userDailyRepository
+                .findByUserIdAndDayNumberAndIsArchivedFalse(userId, dayNumber)
+                .orElseThrow(() -> new CustomApiException("해당 일자의 데일리 플랜을 찾을 수 없습니다."));
+        boolean passed = userDaily.isPassed();
+
+        // 2) 해당 dayNumber로 저장된 UserActivity 목록 조회
         List<UserActivity> activities = userActivityRepository.findByUserIdAndTestInfo(userId, dayNumber);
 
-        Map<String, DaySubjectDetailsDto.SubjectDetails> subjectDetailsMap = new HashMap<>();
+        // 3) 스킬별 집계용 Map과 결과 리스트 초기화
+        Map<Long, DaySubjectDetailsDto.SubjectDetails> subjectDetailsMap = new HashMap<>();
         List<DaySubjectDetailsDto.DailyResultDto> dailyResults = new ArrayList<>();
 
+        // 4) 각 활동(Activity)마다 점수 계산 및 DTO 매핑
         for (UserActivity activity : activities) {
             Question question = activity.getQuestion();
             Skill skill = question.getSkill();
+
+            Long skillId = skill.getId();
             String title = skill.getTitle();
-            String keyConcepts = skill.getKeyConcepts();
+            String type = skill.getKeyConcepts(); // 세부 항목명
+            double score = activity.isCorrection()
+                    ? getPointsForDifficulty(question.getDifficulty())
+                    : 0.0;
 
-            double score = activity.isCorrection() ? 10.0 : 0.0;
-            subjectDetailsMap.computeIfAbsent(title, k -> new DaySubjectDetailsDto.SubjectDetails(title))
-                    .addScore(keyConcepts, score);
+            // SubjectDetails 객체 생성 또는 가져와서 해당 type으로 점수 누적
+            subjectDetailsMap
+                    .computeIfAbsent(skillId, id -> new DaySubjectDetailsDto.SubjectDetails(id, title))
+                    .addScore(type, score);
 
-            DaySubjectDetailsDto.DailyResultDto resultDto = new DaySubjectDetailsDto.DailyResultDto(
-                    skill.getKeyConcepts(),
+            // 문제별 상세 결과 DTO 추가
+            dailyResults.add(new DaySubjectDetailsDto.DailyResultDto(
+                    title,
                     question.getQuestion(),
-                    activity.isCorrection());
-
-            dailyResults.add(resultDto);
+                    activity.isCorrection()));
         }
 
+        // 5) Map → List 변환
         List<DaySubjectDetailsDto.SubjectDetails> subjectDetailsList = new ArrayList<>(subjectDetailsMap.values());
 
-        for (DaySubjectDetailsDto.SubjectDetails subject : subjectDetailsList) {
-            subject.adjustTotalScore();
-        }
-
-        return new DaySubjectDetailsDto.Response(dayNumber, subjectDetailsList, dailyResults);
+        // 6) 최종 Response DTO 반환
+        return new DaySubjectDetailsDto.Response(
+                dayNumber,
+                passed,
+                subjectDetailsList,
+                dailyResults);
     }
 
     @Transactional(readOnly = true)
-    public UserDailyDto.DailyDetailsDto getDailyDetails(Long userId, String dayNumber) {
+    public DailyDetailAndStatusDto getDailyDetailWithStatus(Long userId, String dayNumber) {
+        // 해당 일자의 daily plan 조회
         UserDaily userDaily = userDailyRepository.findByUserIdAndDayNumber(userId, dayNumber)
                 .orElseThrow(() -> new CustomApiException("해당 일자의 데일리 플랜을 찾을 수 없습니다."));
 
-        List<UserDailyDto.DailyDetailsDto.SkillDetailDto> skillDetails = userDaily.getPlannedSkills().stream()
-                .map(skill -> UserDailyDto.DailyDetailsDto.SkillDetailDto.builder()
+        // skills 정보 구성
+        List<DailyDetailAndStatusDto.SkillDetailDto> skills = userDaily.getPlannedSkills().stream()
+                .map(skill -> DailyDetailAndStatusDto.SkillDetailDto.builder()
                         .id(skill.getId())
                         .keyConcepts(skill.getKeyConcepts())
                         .description(skill.getDescription())
                         .build())
                 .collect(Collectors.toList());
 
-        // 해당 데일리의 UserActivity들을 가져와서 총 점수 계산
+        // UserActivity를 통한 총 점수 계산
         List<UserActivity> activities = userActivityRepository.findByUserIdAndTestInfo(userId, dayNumber);
         double totalScore = activities.stream()
                 .mapToDouble(UserActivity::getScore)
                 .sum();
 
-        return UserDailyDto.DailyDetailsDto.builder()
-                .dayNumber(userDaily.getDayNumber())
-                .passed(userDaily.isPassed())
-                .skills(skillDetails)
+        // 기존 testStatus 정보 구성
+        int attemptCount = userDaily.getAttemptCount();
+        boolean passed = userDaily.isPassed();
+        boolean retestEligible = userDaily.isRetestEligible();
+
+        // 추가: 진행 가능 여부 계산
+        boolean available = false;
+        if ("Day1".equals(dayNumber)) {
+            available = true; // 첫 날은 항상 진행 가능
+        } else {
+            // 이전 Day 계산 (예: "Day2" → "Day1")
+            int currentDayNum = Integer.parseInt(dayNumber.replace("Day", ""));
+            String previousDay = "Day" + (currentDayNum - 1);
+            UserDaily previousDaily = userDailyRepository.findByUserIdAndDayNumber(userId, previousDay)
+                    .orElse(null);
+            if (previousDaily != null && previousDaily.isPassed() && previousDaily.getCompletionDate() != null) {
+                // 이전 Day가 완료되었고, 오늘의 계획일자가 이전 완료일 다음 날(또는 이후)이어야 진행 가능
+                LocalDate allowedDate = previousDaily.getCompletionDate().plusDays(1);
+                available = !userDaily.getPlanDate().isBefore(allowedDate);
+            }
+        }
+
+        DailyDetailAndStatusDto.StatusDto status = DailyDetailAndStatusDto.StatusDto.builder()
+                .attemptCount(attemptCount)
+                .passed(passed)
+                .retestEligible(retestEligible)
                 .totalScore(totalScore)
+                .available(available)
+                .build();
+
+        return DailyDetailAndStatusDto.builder()
+                .dayNumber(userDaily.getDayNumber())
+                .skills(skills)
+                .status(status)
                 .build();
     }
 
-    public UserDailyDto.TestStatusDto getDailyTestStatus(Long userId, String dayNumber) {
+    @Transactional(readOnly = true)
+    public List<UserDailyDto.DailySkillDto> getDailyConcepts(Long userId, String dayNumber) {
+        // 해당 사용자의 daily plan 조회
         UserDaily userDaily = userDailyRepository.findByUserIdAndDayNumber(userId, dayNumber)
                 .orElseThrow(() -> new CustomApiException("해당 일자의 데일리 플랜을 찾을 수 없습니다."));
 
-        return UserDailyDto.TestStatusDto.builder()
-                .dayNumber(userDaily.getDayNumber())
-                .attemptCount(userDaily.getAttemptCount())
-                .passed(userDaily.isPassed())
-                .retestEligible(userDaily.isRetestEligible())
-                .build();
+        List<Skill> skills = userDaily.getPlannedSkills();
+        if (skills == null || skills.isEmpty()) {
+            throw new CustomApiException("해당 일자에 배정된 개념이 없습니다.");
+        }
+
+        // plannedSkills에 배정된 모든 스킬을 DTO로 변환하여 리스트로 반환
+        return skills.stream().map(skill -> {
+            UserDailyDto.DailySkillDto dto = new UserDailyDto.DailySkillDto();
+            dto.setSkillId(skill.getId());
+            dto.setKeyConcepts(skill.getKeyConcepts());
+            dto.setDescription(skill.getDescription());
+            return dto;
+        }).collect(Collectors.toList());
     }
 
     // 테스트용
