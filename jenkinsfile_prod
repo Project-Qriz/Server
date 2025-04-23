@@ -1,0 +1,113 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE = 'qriz-api'
+        DOCKER_TAG = "prod-${BUILD_NUMBER}"
+        AWS_REGION = 'ap-northeast-2'
+        ECR_REGISTRY = '314146328505.dkr.ecr.ap-northeast-2.amazonaws.com'
+        AWS_CREDENTIALS = 'aws-credentials'
+        PROPERTIES_FILE = 'spring-prod-properties'
+        ASG_NAME = 'prod-spring-asg'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', credentialsId: 'github-token', url: 'https://github.com/Project-Qriz/Server.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                withCredentials([file(credentialsId: 'spring-prod-properties', variable: 'PROPERTIES_FILE')]) {
+                    sh "cat \${PROPERTIES_FILE} > application-prod.properties"
+
+                    sh """
+                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REGISTRY}/qriz/api:${DOCKER_TAG}
+                    """
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: "${AWS_CREDENTIALS}",
+                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                    ]]) {
+                        sh """
+                            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                            docker push ${ECR_REGISTRY}/qriz/api:${DOCKER_TAG}
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to ASG') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: "${AWS_CREDENTIALS}",
+                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                ]]) {
+                    // ASG 인스턴스 리프레시 트리거
+                    sh """
+                        aws autoscaling start-instance-refresh \\
+                          --auto-scaling-group-name ${ASG_NAME} \\
+                          --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}'
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '프로덕션 배포가 성공적으로 완료되었습니다!'
+            slackSend(
+                color: 'good',
+                message: "프로덕션 배포 성공 :white_check_mark: - ${env.JOB_NAME} #${env.BUILD_NUMBER} (<${env.BUILD_URL}|상세 보기>)"
+            )
+        }
+        failure {
+            echo '프로덕션 배포 중 오류가 발생했습니다.'
+            slackSend(
+                color: 'danger',
+                message: "프로덕션 배포 실패 :x: - ${env.JOB_NAME} #${env.BUILD_NUMBER} (<${env.BUILD_URL}|상세 보기>)"
+            )
+            // 실패 시 자동 롤백 로직
+            script {
+                try {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: "${AWS_CREDENTIALS}",
+                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                    ]]) {
+                        // 이전 성공한 빌드 번호 가져오기
+                        def lastSuccessfulBuild = currentBuild.previousSuccessfulBuild?.number ?: (currentBuild.number - 1)
+                        def previousTag = "prod-${lastSuccessfulBuild}"
+
+                        echo "이전 성공 배포(${previousTag})로 롤백합니다."
+
+                        // ASG 롤백
+                        sh """
+                            aws autoscaling start-instance-refresh \\
+                              --auto-scaling-group-name ${ASG_NAME} \\
+                              --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}'
+                        """
+                    }
+                } catch (Exception e) {
+                    echo "롤백 중 오류가 발생했습니다: ${e.message}"
+                }
+            }
+        }
+    }
+}
