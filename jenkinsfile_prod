@@ -25,7 +25,7 @@ pipeline {
 
                     sh """
                         docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} -f Dockerfile_prod .
-                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REGISTRY}/qriz/api:main
                         docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REGISTRY}/qriz/api:${DOCKER_TAG}
                     """
                 }
@@ -43,7 +43,7 @@ pipeline {
                     ]]) {
                         sh """
                             aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
-                            docker push ${ECR_REGISTRY}/qriz/api:latest
+                            docker push ${ECR_REGISTRY}/qriz/api:main
                             docker push ${ECR_REGISTRY}/qriz/api:${DOCKER_TAG}
                         """
                     }
