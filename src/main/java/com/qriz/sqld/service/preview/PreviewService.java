@@ -24,6 +24,9 @@ import com.qriz.sqld.handler.ex.CustomApiException;
 import com.qriz.sqld.service.daily.DailyPlanService;
 import com.qriz.sqld.domain.preview.UserPreviewTestRepository;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +36,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.stream.Collectors;
 import java.util.Collections;
 import java.util.Comparator;
@@ -53,25 +57,26 @@ public class PreviewService {
 
     @Transactional
     public PreviewTestResult getPreviewTestQuestions(User user) {
-        // 이미 프리뷰 테스트를 완료했는지 확인
         if (userPreviewTestRepository.existsByUserAndCompleted(user, true)) {
             throw new RuntimeException("User has already completed the preview test");
         }
 
-        List<Skill> selectedSkills = surveyRepository.findByUserAndCheckedTrue(user).stream()
+        List<Skill> selectedSkills = surveyRepository.findByUserAndCheckedTrue(user)
+                .stream()
                 .map(Survey::getSkill)
                 .collect(Collectors.toList());
 
         List<Question> questions;
         if (selectedSkills.isEmpty()) {
-            // 아무것도 모른다 선택 (기존 로직)
             questions = getRandomPreviewQuestions(21);
         } else {
-            questions = getPreviewQuestionsBasedOnSelection(selectedSkills);
+            List<Long> skillIds = selectedSkills.stream()
+                    .map(Skill::getId)
+                    .collect(Collectors.toList());
+            questions = getStratifiedRandomQuestions(skillIds, 1, 21);
         }
 
-        // seed 값을 이용해 결정적 랜덤화를 적용합니다.
-        long seed = System.currentTimeMillis(); // 필요에 따라 고정값 또는 다른 seed 사용 가능
+        long seed = System.currentTimeMillis();
         List<QuestionDto> questionDtos = questions.stream()
                 .map(q -> new QuestionDto(q, seed))
                 .collect(Collectors.toList());
@@ -83,47 +88,58 @@ public class PreviewService {
         return new PreviewTestResult(questionDtos, totalTimeLimit);
     }
 
-    private List<Question> getPreviewQuestionsBasedOnSelection(List<Skill> selectedSkills) {
-        List<Long> selectedSkillIds = selectedSkills.stream().map(Skill::getId).collect(Collectors.toList());
-        List<Long> unselectedSkillIds = skillRepository.findAllSkillIdsNotIn(selectedSkillIds);
-
-        int totalQuestions = 21;
-        int selectedQuestionsCount = Math.min(10, totalQuestions * selectedSkills.size() / 30);
-        int unselectedQuestionsCount = totalQuestions - selectedQuestionsCount;
-
-        List<Question> selectedQuestions = new ArrayList<>();
-        for (Long skillId : selectedSkillIds) {
-            int questionsPerSkill = Math.max(1, selectedQuestionsCount / selectedSkillIds.size());
-            selectedQuestions.addAll(questionRepository.findRandomQuestionsBySkillIdsAndCategoryOrderByFrequency(
-                    Collections.singletonList(skillId), 1, questionsPerSkill));
-        }
-
-        List<Question> unselectedQuestions = new ArrayList<>();
-        while (unselectedQuestions.size() < unselectedQuestionsCount) {
-            for (Long skillId : unselectedSkillIds) {
-                if (unselectedQuestions.size() >= unselectedQuestionsCount)
-                    break;
-                unselectedQuestions.addAll(questionRepository.findRandomQuestionsBySkillIdsAndCategoryOrderByFrequency(
-                        Collections.singletonList(skillId), 1, 1));
-            }
-        }
-
-        List<Question> allQuestions = new ArrayList<>(selectedQuestions);
-        allQuestions.addAll(unselectedQuestions);
-
-        while (allQuestions.size() > totalQuestions) {
-            allQuestions.remove(allQuestions.size() - 1);
-        }
-
-        Collections.shuffle(allQuestions);
-
-        return allQuestions;
+    private List<Question> getRandomPreviewQuestions(int totalQuestions) {
+        List<Long> allSkillIds = questionRepository.findAllSkillIds();
+        return getRandomQuestions(allSkillIds, 1, totalQuestions);
     }
 
-    private List<Question> getRandomPreviewQuestions(int totalQuestions) {
-        List<Long> allSkillIds = skillRepository.findAll().stream().map(Skill::getId).collect(Collectors.toList());
-        return questionRepository.findRandomQuestionsBySkillIdsAndCategoryOrderByFrequency(allSkillIds, 1,
-                totalQuestions);
+    private List<Question> getRandomQuestions(List<Long> skillIds, int category, int sampleSize) {
+        long total = questionRepository.countBySkillIdInAndCategory(skillIds, category);
+        if (total <= sampleSize) {
+            return questionRepository
+                    .findBySkillIdInAndCategory(skillIds, category, Pageable.unpaged())
+                    .getContent();
+        }
+        int maxPage = (int) Math.ceil((double) total / sampleSize);
+        int page = new Random().nextInt(maxPage);
+        PageRequest pr = PageRequest.of(page, sampleSize);
+        return questionRepository
+                .findBySkillIdInAndCategory(skillIds, category, pr)
+                .getContent();
+    }
+
+    private List<Question> getStratifiedRandomQuestions(List<Long> skillIds, int category, int totalQuestions) {
+        int base = totalQuestions / skillIds.size();
+        int rem = totalQuestions % skillIds.size();
+        List<Question> result = new ArrayList<>();
+
+        for (Long sid : skillIds) {
+            int quota = base + (rem-- > 0 ? 1 : 0);
+            if (quota <= 0)
+                continue;
+
+            long count = questionRepository.countBySkillIdInAndCategory(
+                    Collections.singletonList(sid), category);
+            if (count == 0)
+                continue;
+
+            int pages = (int) Math.ceil((double) count / quota);
+            int page = new Random().nextInt(pages);
+            PageRequest pr = PageRequest.of(page, quota);
+
+            result.addAll(questionRepository
+                    .findBySkillIdInAndCategory(
+                            Collections.singletonList(sid), category, pr)
+                    .getContent());
+        }
+
+        int need = totalQuestions - result.size();
+        if (need > 0) {
+            result.addAll(getRandomQuestions(skillIds, category, need));
+        }
+
+        Collections.shuffle(result);
+        return result.subList(0, totalQuestions);
     }
 
     public void processPreviewResults(Long userId, List<ExamReqDto.ExamSubmitReqDto> activities) {
