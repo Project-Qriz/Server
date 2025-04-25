@@ -3,6 +3,8 @@ package com.qriz.sqld.domain.question;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -104,4 +106,11 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
 
         @Query("SELECT DISTINCT q.examSession FROM Question q WHERE q.category = :category ORDER BY q.examSession DESC")
         List<String> findDistinctExamSessionByCategory(@Param("category") Integer category);
+
+        long countBySkillIdInAndCategory(List<Long> skillIds, int category);
+
+        Page<Question> findBySkillIdInAndCategory(
+                        List<Long> skillIds,
+                        int category,
+                        Pageable pageable);
 }
