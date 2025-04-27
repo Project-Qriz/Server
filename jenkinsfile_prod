@@ -2,37 +2,16 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = 'qriz-api'
-        DOCKER_TAG = "prod-${BUILD_NUMBER}"
         AWS_REGION = 'ap-northeast-2'
         ECR_REGISTRY = '314146328505.dkr.ecr.ap-northeast-2.amazonaws.com'
         AWS_CREDENTIALS = 'aws-credentials'
-        PROPERTIES_FILE = 'spring-prod-properties'
+        SOURCE_IMAGE_TAG = 'latest' // 개발 환경의 이미지 태그
+        PROD_IMAGE_TAG = "prod-${BUILD_NUMBER}" // 새 프로덕션 태그
         ASG_NAME = 'prod-spring-asg'
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                git branch: 'main', credentialsId: 'github-token', url: 'https://github.com/Project-Qriz/Server.git'
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                withCredentials([file(credentialsId: 'spring-prod-properties', variable: 'PROPERTIES_FILE')]) {
-                    sh "cat \${PROPERTIES_FILE} > application-prod.properties"
-
-                    sh """
-                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} -f Dockerfile_prod .
-                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REGISTRY}/qriz/api:main
-                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REGISTRY}/qriz/api:${DOCKER_TAG}
-                    """
-                }
-            }
-        }
-
-        stage('Push Docker Image') {
+        stage('Promote Image to Production') {
             steps {
                 script {
                     withCredentials([[
@@ -41,11 +20,19 @@ pipeline {
                         accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                     ]]) {
-                        sh """
-                            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
-                            docker push ${ECR_REGISTRY}/qriz/api:main
-                            docker push ${ECR_REGISTRY}/qriz/api:${DOCKER_TAG}
-                        """
+                        // ECR 로그인
+                        sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}"
+
+                        // 개발 이미지 가져오기
+                        sh "docker pull ${ECR_REGISTRY}/qriz/api:${SOURCE_IMAGE_TAG}"
+
+                        // 프로덕션 태그로 변경
+                        sh "docker tag ${ECR_REGISTRY}/qriz/api:${SOURCE_IMAGE_TAG} ${ECR_REGISTRY}/qriz/api:${PROD_IMAGE_TAG}"
+                        sh "docker tag ${ECR_REGISTRY}/qriz/api:${SOURCE_IMAGE_TAG} ${ECR_REGISTRY}/qriz/api:main"
+
+                        // 프로덕션 태그로 푸시
+                        sh "docker push ${ECR_REGISTRY}/qriz/api:${PROD_IMAGE_TAG}"
+                        sh "docker push ${ECR_REGISTRY}/qriz/api:main"
                     }
                 }
             }
@@ -64,6 +51,14 @@ pipeline {
                         aws autoscaling start-instance-refresh \\
                           --auto-scaling-group-name ${ASG_NAME} \\
                           --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}'
+                    """
+
+                    // 인스턴스 리프레시 상태 확인
+                    sh """
+                        echo "인스턴스 리프레시 상태 확인 중..."
+                        aws autoscaling describe-instance-refreshes \\
+                          --auto-scaling-group-name ${ASG_NAME} \\
+                          --max-records 1
                     """
                 }
             }
@@ -84,6 +79,7 @@ pipeline {
                 color: 'danger',
                 message: "프로덕션 배포 실패 :x: - ${env.JOB_NAME} #${env.BUILD_NUMBER} (<${env.BUILD_URL}|상세 보기>)"
             )
+
             // 실패 시 자동 롤백 로직
             script {
                 try {
