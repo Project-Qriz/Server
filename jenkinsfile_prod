@@ -17,7 +17,21 @@ pipeline {
             }
         }
 
-        stage('Promote Image to Production') {
+        stage('Build Docker Image') {
+            steps {
+                withCredentials([file(credentialsId: 'spring-prod-properties', variable: 'PROPERTIES_FILE')]) {
+                    sh "cat \${PROPERTIES_FILE} > application-prod.properties"
+
+                    sh """
+                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REGISTRY}/qriz/api:${DOCKER_TAG}
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REGISTRY}/qriz/api:main
+                    """
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
             steps {
                 script {
                     withCredentials([[
@@ -26,19 +40,11 @@ pipeline {
                         accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                     ]]) {
-                        // ECR 로그인
-                        sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}"
-
-                        // 개발 이미지 가져오기
-                        sh "docker pull ${ECR_REGISTRY}/qriz/api:${SOURCE_IMAGE_TAG}"
-
-                        // 프로덕션 태그로 변경
-                        sh "docker tag ${ECR_REGISTRY}/qriz/api:${SOURCE_IMAGE_TAG} ${ECR_REGISTRY}/qriz/api:${PROD_IMAGE_TAG}"
-                        sh "docker tag ${ECR_REGISTRY}/qriz/api:${SOURCE_IMAGE_TAG} ${ECR_REGISTRY}/qriz/api:main"
-
-                        // 프로덕션 태그로 푸시
-                        sh "docker push ${ECR_REGISTRY}/qriz/api:${PROD_IMAGE_TAG}"
-                        sh "docker push ${ECR_REGISTRY}/qriz/api:main"
+                        sh """
+                            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                            docker push ${ECR_REGISTRY}/qriz/api:${DOCKER_TAG}
+                            docker push ${ECR_REGISTRY}/qriz/api:main
+                        """
                     }
                 }
             }
