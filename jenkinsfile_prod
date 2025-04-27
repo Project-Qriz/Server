@@ -11,6 +11,12 @@ pipeline {
     }
 
     stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', credentialsId: 'github-token', url: 'https://github.com/Project-Qriz/Server.git'
+            }
+        }
+
         stage('Promote Image to Production') {
             steps {
                 script {
