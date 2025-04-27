@@ -26,6 +26,7 @@ pipeline {
                     sh """
                         docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
                         docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REGISTRY}/qriz/api:${DOCKER_TAG}
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REGISTRY}/qriz/api:main
                     """
                 }
             }
@@ -43,6 +44,7 @@ pipeline {
                         sh """
                             aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
                             docker push ${ECR_REGISTRY}/qriz/api:${DOCKER_TAG}
+                            docker push ${ECR_REGISTRY}/qriz/api:main
                         """
                     }
                 }
@@ -62,6 +64,14 @@ pipeline {
                         aws autoscaling start-instance-refresh \\
                           --auto-scaling-group-name ${ASG_NAME} \\
                           --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}'
+                    """
+
+                    // 인스턴스 리프레시 상태 확인
+                    sh """
+                        echo "인스턴스 리프레시 상태 확인 중..."
+                        aws autoscaling describe-instance-refreshes \\
+                          --auto-scaling-group-name ${ASG_NAME} \\
+                          --max-records 1
                     """
                 }
             }
