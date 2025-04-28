@@ -142,6 +142,7 @@ public class PreviewService {
         return result.subList(0, totalQuestions);
     }
 
+    @Transactional
     public void processPreviewResults(Long userId, List<ExamReqDto.ExamSubmitReqDto> activities) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -185,13 +186,18 @@ public class PreviewService {
                 userActivity.setQuestion(question);
                 userActivity.setTestInfo("Preview Test");
                 userActivity.setQuestionNum(activity.getQuestionNum());
-                userActivity.setChecked(activity.getOptionId());
-                userActivity.setTimeSpent(0); // 시간 정보가 없으면 0 처리
 
-                // Option PK를 사용하여 Option 엔티티 조회
-                Option submittedOption = optionRepository.findById((long) activity.getOptionId())
-                        .orElseThrow(() -> new RuntimeException("Option not found"));
-                boolean isCorrect = submittedOption.isAnswer();
+                // 체크된 옵션 ID (null 허용)
+                Long optionId = activity.getOptionId();
+                userActivity.setChecked(optionId);
+
+                // 정답 여부 판단 (null이면 오답)
+                boolean isCorrect = false;
+                if (optionId != null) {
+                    Option submittedOption = optionRepository.findById(optionId)
+                            .orElseThrow(() -> new RuntimeException("Option not found"));
+                    isCorrect = submittedOption.isAnswer();
+                }
                 userActivity.setCorrection(isCorrect);
                 userActivity.setScore(isCorrect ? 100.0 / 21 : 0.0);
                 userActivity.setDate(LocalDateTime.now());
