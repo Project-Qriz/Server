@@ -145,24 +145,25 @@ public class DailyService {
             Question question = questionRepository.findById(activity.getQuestion().getQuestionId())
                     .orElseThrow(() -> new CustomApiException("문제를 찾을 수 없습니다."));
 
-            // 제출된 optionId를 통해 Option 엔티티 조회
-            Option submittedOption = optionRepository.findById(activity.getOptionId())
-                    .orElseThrow(() -> new CustomApiException("선택한 옵션을 찾을 수 없습니다."));
+            Long optionId = activity.getOptionId(); // (1) optionId를 Long으로 받음
+            boolean isCorrect = false;
 
-            // 해당 옵션이 실제 이 문제에 속하는지 확인
-            if (!submittedOption.getQuestion().getId().equals(question.getId())) {
-                throw new CustomApiException("선택한 옵션이 해당 문제와 일치하지 않습니다.");
+            if (optionId != null) { // (2) 선택된 경우만 조회
+                Option submittedOption = optionRepository.findById(optionId)
+                        .orElseThrow(() -> new CustomApiException("선택한 옵션을 찾을 수 없습니다."));
+                // (3) 문제-옵션 일치 검사
+                if (!submittedOption.getQuestion().getId().equals(question.getId())) {
+                    throw new CustomApiException("선택한 옵션이 해당 문제와 일치하지 않습니다.");
+                }
+                isCorrect = submittedOption.isAnswer();
             }
-
-            // 정답 여부 판별
-            boolean isCorrect = submittedOption.isAnswer();
 
             UserActivity userActivity = new UserActivity();
             userActivity.setUser(user);
             userActivity.setQuestion(question);
             userActivity.setTestInfo(dayNumber);
             userActivity.setQuestionNum(activity.getQuestionNum());
-            userActivity.setChecked(activity.getOptionId());
+            userActivity.setChecked(optionId); // (4) null 허용
             userActivity.setTimeSpent(activity.getTimeSpent());
             userActivity.setCorrection(isCorrect);
             userActivity.setDate(LocalDateTime.now());
@@ -177,7 +178,7 @@ public class DailyService {
                             question.getId(),
                             getCategoryName(question.getCategory())),
                     activity.getQuestionNum(),
-                    String.valueOf(activity.getOptionId()),
+                    optionId != null ? String.valueOf(optionId) : null,
                     activity.getTimeSpent(),
                     isCorrect);
             results.add(result);

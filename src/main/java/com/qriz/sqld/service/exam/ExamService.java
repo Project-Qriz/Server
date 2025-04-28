@@ -84,9 +84,7 @@ public class ExamService {
                 User user = userRepository.findById(userId)
                                 .orElseThrow(() -> new CustomApiException("사용자를 찾을 수 없습니다."));
 
-                // 기존 세션 삭제 로직 등은 그대로 유지
-
-                // 새로운 세션 생성
+                // 새 세션 생성
                 UserExamSession userExamSession = createNewExamSession(user, session);
 
                 List<TestRespDto.ExamSubmitRespDto> results = new ArrayList<>();
@@ -94,37 +92,44 @@ public class ExamService {
                         Question question = questionRepository.findById(activity.getQuestion().getQuestionId())
                                         .orElseThrow(() -> new CustomApiException("문제를 찾을 수 없습니다."));
 
-                        // 제출된 optionId를 통해 Option 엔티티 조회
-                        Option submittedOption = optionRepository.findById((long) activity.getOptionId())
-                                        .orElseThrow(() -> new CustomApiException("선택한 옵션을 찾을 수 없습니다."));
+                        // 1) optionId를 nullable Long으로 받음
+                        Long optionId = activity.getOptionId();
 
-                        // 해당 옵션이 이 문제에 속하는지 확인
-                        if (!submittedOption.getQuestion().getId().equals(question.getId())) {
-                                throw new CustomApiException("선택한 옵션이 해당 문제와 일치하지 않습니다.");
+                        // 2) 기본은 오답
+                        boolean isCorrect = false;
+
+                        if (optionId != null) {
+                                // 3) 선택된 경우에만 조회
+                                Option submittedOption = optionRepository.findById(optionId)
+                                                .orElseThrow(() -> new CustomApiException("선택한 옵션을 찾을 수 없습니다."));
+
+                                // 4) 문제-옵션 일치 검사
+                                if (!submittedOption.getQuestion().getId().equals(question.getId())) {
+                                        throw new CustomApiException("선택한 옵션이 해당 문제와 일치하지 않습니다.");
+                                }
+                                isCorrect = submittedOption.isAnswer();
                         }
 
-                        // 정답 여부 판별: Option 엔티티의 isAnswer 사용
-                        boolean isCorrect = submittedOption.isAnswer();
-
-                        // UserActivity 기록 생성
+                        // 5) UserActivity 생성
                         UserActivity userActivity = new UserActivity();
                         userActivity.setUser(user);
                         userActivity.setQuestion(question);
                         userActivity.setTestInfo(userExamSession.getSession());
                         userActivity.setQuestionNum(activity.getQuestionNum());
-                        userActivity.setChecked(activity.getOptionId());
-                        userActivity.setTimeSpent(0); // 모의고사의 경우 시간 정보가 없으면 0 처리
+                        userActivity.setChecked(optionId); // null 허용
+                        userActivity.setTimeSpent(0);
                         userActivity.setCorrection(isCorrect);
                         userActivity.setDate(LocalDateTime.now());
                         userActivity.setExamSession(userExamSession);
-                        userActivity.setScore(isCorrect ? 2.0 : 0.0); // 예: 맞으면 2점
+                        userActivity.setScore(isCorrect ? 2.0 : 0.0);
 
                         userActivityRepository.save(userActivity);
                         createClippedRecord(userActivity);
+
+                        // 6) 결과 DTO에 null 또는 값 그대로 전달
                         results.add(createResultDto(userActivity, user.getId(), question));
                 }
 
-                // 과목별 점수 계산 및 세션 업데이트
                 Map<String, Double> subjectScores = calculateSubjectScores(examSubmitReqDto.getActivities());
                 userExamSession.setSubject1Score(subjectScores.getOrDefault("1과목", 0.0));
                 userExamSession.setSubject2Score(subjectScores.getOrDefault("2과목", 0.0));
