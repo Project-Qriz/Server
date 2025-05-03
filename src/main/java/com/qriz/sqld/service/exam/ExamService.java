@@ -313,6 +313,7 @@ public class ExamService {
                 List<ExamTestResult.ResultDto> resultDtos = userActivityRepository.findByExamSession(latestSession)
                                 .stream()
                                 .map(activity -> new ExamTestResult.ResultDto(
+                                                activity.getQuestion().getId(),
                                                 activity.getQuestionNum(),
                                                 activity.getQuestion().getSkill().getKeyConcepts(),
                                                 activity.getQuestion().getQuestion(),
