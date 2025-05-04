@@ -317,17 +317,22 @@ public class DailyPlanService {
         boolean candidateFound = false;
         for (UserDailyDto dto : dtos) {
             if (!candidateFound) {
-                // 1. planDate가 오늘인 경우
-                if (dto.getPlanDate().isEqual(today)) {
-                    dto.setToday(true); // Lombok이 생성한 setter는 setToday()
+                // 0. Day30 완료 후에도 Today로 표시
+                if ("Day30".equals(dto.getDayNumber()) && dto.isCompleted()) {
+                    dto.setToday(true);
                     candidateFound = true;
                 }
-                // 2. 오늘 완료된 경우 (완료되었어도 오늘 진행한 것으로 표시)
+                // 1. planDate가 오늘인 경우
+                else if (dto.getPlanDate().isEqual(today)) {
+                    dto.setToday(true);
+                    candidateFound = true;
+                }
+                // 2. 오늘 완료된 경우
                 else if (dto.getCompletionDate() != null && dto.getCompletionDate().isEqual(today)) {
                     dto.setToday(true);
                     candidateFound = true;
                 }
-                // 3. planDate가 오늘보다 이전이고 아직 완료되지 않은 경우(overdue)
+                // 3. planDate가 오늘보다 이전이고 아직 완료되지 않은 경우
                 else if (dto.getPlanDate().isBefore(today) && !dto.isCompleted()) {
                     dto.setToday(true);
                     candidateFound = true;
@@ -337,6 +342,11 @@ public class DailyPlanService {
             } else {
                 dto.setToday(false);
             }
+        }
+
+        for (UserDailyDto dto : dtos) {
+            // Day30이면서 완료된 경우에만 isLastDay=true
+            dto.setLastDay("Day30".equals(dto.getDayNumber()) && dto.isCompleted());
         }
 
         return dtos;

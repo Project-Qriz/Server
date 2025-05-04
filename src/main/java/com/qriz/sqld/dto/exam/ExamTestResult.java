@@ -144,6 +144,7 @@ public class ExamTestResult {
     @Getter
     @AllArgsConstructor
     public static class ResultDto {
+        private Long questionId;
         private int questionNum;
         private String skillName;
         private String question;

@@ -25,6 +25,7 @@ public class UserDailyDto {
     private boolean reviewDay;
     private boolean comprehensiveReviewDay;
     private boolean isToday;
+    private boolean isLastDay;
 
     public UserDailyDto(UserDaily userDaily) {
         this.id = userDaily.getId();
