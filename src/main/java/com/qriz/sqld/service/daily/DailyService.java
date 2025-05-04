@@ -341,6 +341,7 @@ public class DailyService {
 
             // 문제별 상세 결과 DTO 추가
             dailyResults.add(new DaySubjectDetailsDto.DailyResultDto(
+                    question.getId(),
                     title,
                     question.getQuestion(),
                     activity.isCorrection()));
