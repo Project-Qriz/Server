@@ -57,6 +57,7 @@ public class DaySubjectDetailsDto {
     @Getter
     @AllArgsConstructor
     public static class DailyResultDto {
+        private Long questionId;
         private String skillName;
         private String question;
         private boolean correction;
