@@ -2,6 +2,7 @@ package com.qriz.sqld.dto.application;
 
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 
 import com.qriz.sqld.domain.application.Application;
 
@@ -31,9 +32,9 @@ public class ApplicationRespDto {
             private String releaseDate;
 
             public ApplicationDetail(Application application) {
-                DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MM.dd(E)");
-                DateTimeFormatter testDateFormatter = DateTimeFormatter.ofPattern("M월 d일(E)");
-                DateTimeFormatter releaseDateFormatter = DateTimeFormatter.ofPattern("M월 d일");
+                DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MM.dd(E)", Locale.KOREAN);
+                DateTimeFormatter testDateFormatter = DateTimeFormatter.ofPattern("M월 d일(E)", Locale.KOREAN);
+                DateTimeFormatter releaseDateFormatter = DateTimeFormatter.ofPattern("M월 d일", Locale.KOREAN);
 
                 this.applyId = application.getId();
                 this.examName = application.getExamName();
