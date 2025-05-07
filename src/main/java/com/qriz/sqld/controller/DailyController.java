@@ -41,9 +41,11 @@ public class DailyController {
          * @param loginUser 로그인한 사용자
          * @return 데일리 테스트 문제 목록
          */
-        @GetMapping("/get/{dayNumber}")
-        public ResponseEntity<?> getDailyTestByDay(@PathVariable String dayNumber,
+        @GetMapping("/get/{day}")
+        public ResponseEntity<?> getDailyTestByDay(@PathVariable int day,
                         @AuthenticationPrincipal LoginUser loginUser) {
+
+                String dayNumber = "Day" + day;
                 List<TestRespDto.DailyRespDto> dailyQuestions = dailyService
                                 .getDailyTestQuestionsByDay(loginUser.getUser().getId(), dayNumber);
                 return new ResponseEntity<>(new ResponseDto<>(1, "문제 불러오기 성공", dailyQuestions), HttpStatus.OK);
@@ -73,11 +75,13 @@ public class DailyController {
          * @param loginUser  로그인한 사용자
          * @return 테스트 제출 결과
          */
-        @PostMapping("/submit/{dayNumber}")
+        @PostMapping("/submit/{day}")
         public ResponseEntity<?> submitDailyTest(
-                        @PathVariable String dayNumber,
+                        @PathVariable int day,
                         @RequestBody TestReqDto submission,
                         @AuthenticationPrincipal LoginUser loginUser) {
+
+                String dayNumber = "Day" + day;
                 dailyService.processDailyTestSubmission(loginUser.getUser().getId(), dayNumber, submission);
                 return new ResponseEntity<>(new ResponseDto<>(1, "테스트 제출 성공", null), HttpStatus.OK);
         }
@@ -90,10 +94,12 @@ public class DailyController {
          * @param loginUser  로그인한 사용자
          * @return
          */
-        @GetMapping("/result/{dayNumber}/{questionId}")
-        public ResponseEntity<?> getDailyResultDetail(@PathVariable String dayNumber,
+        @GetMapping("/result/{day}/{questionId}")
+        public ResponseEntity<?> getDailyResultDetail(@PathVariable int day,
                         @PathVariable Long questionId,
                         @AuthenticationPrincipal LoginUser loginUser) {
+
+                String dayNumber = "Day" + day;
                 ResultDetailDto resultDetail = dailyService.getDailyResultDetail(loginUser.getUser().getId(),
                                 dayNumber,
                                 questionId);
@@ -107,9 +113,11 @@ public class DailyController {
          * @param loginUser
          * @return
          */
-        @GetMapping("/detailed-weekly-result/{dayNumber}")
-        public ResponseEntity<?> getDetailedWeeklyTestResult(@PathVariable String dayNumber,
+        @GetMapping("/detailed-weekly-result/{day}")
+        public ResponseEntity<?> getDetailedWeeklyTestResult(@PathVariable int day,
                         @AuthenticationPrincipal LoginUser loginUser) {
+
+                String dayNumber = "Day" + day;
                 WeeklyTestResultDto result = dailyService.getDetailedWeeklyTestResult(loginUser.getUser().getId(),
                                 dayNumber);
                 return new ResponseEntity<>(new ResponseDto<>(1, "주간 과목점수 비교 조회 성공", result), HttpStatus.OK);
@@ -122,9 +130,11 @@ public class DailyController {
          * @param loginUser
          * @return
          */
-        @GetMapping("/subject-details/{dayNumber}")
-        public ResponseEntity<?> getDaySubjectDetails(@PathVariable String dayNumber,
+        @GetMapping("/subject-details/{day}")
+        public ResponseEntity<?> getDaySubjectDetails(@PathVariable int day,
                         @AuthenticationPrincipal LoginUser loginUser) {
+
+                String dayNumber = "Day" + day;
                 DaySubjectDetailsDto.Response details = dailyService.getDaySubjectDetails(loginUser.getUser().getId(),
                                 dayNumber);
                 return new ResponseEntity<>(new ResponseDto<>(1, "과목별 세부 항목 점수, 문제 풀이 결과 조회 성공", details),
@@ -138,9 +148,11 @@ public class DailyController {
          * @param loginUser
          * @return
          */
-        @GetMapping("/detail-status/{dayNumber}")
-        public ResponseEntity<?> getDailyDetailWithStatus(@PathVariable String dayNumber,
+        @GetMapping("/detail-status/{day}")
+        public ResponseEntity<?> getDailyDetailWithStatus(@PathVariable int day,
                         @AuthenticationPrincipal LoginUser loginUser) {
+
+                String dayNumber = "Day" + day;
                 DailyDetailAndStatusDto detailStatus = dailyService
                                 .getDailyDetailWithStatus(loginUser.getUser().getId(), dayNumber);
                 return new ResponseEntity<>(new ResponseDto<>(1, "일일 상세 정보 조회 성공", detailStatus), HttpStatus.OK);
@@ -173,18 +185,22 @@ public class DailyController {
          * @param loginUser
          * @return
          */
-        @GetMapping("/concept/{dayNumber}")
-        public ResponseEntity<?> getDailyConcepts(@PathVariable String dayNumber,
+        @GetMapping("/concept/{day}")
+        public ResponseEntity<?> getDailyConcepts(@PathVariable int day,
                         @AuthenticationPrincipal LoginUser loginUser) {
+
+                String dayNumber = "Day" + day;
                 List<UserDailyDto.DailySkillDto> dailyConcepts = dailyService
                                 .getDailyConcepts(loginUser.getUser().getId(), dayNumber);
                 return new ResponseEntity<>(new ResponseDto<>(1, "오늘 공부할 개념 불러오기 성공", dailyConcepts), HttpStatus.OK);
         }
 
         // 테스트용
-        @PostMapping("/complete/{dayNumber}")
-        public ResponseEntity<?> completeDailyTest(@PathVariable String dayNumber,
+        @PostMapping("/complete/{day}")
+        public ResponseEntity<?> completeDailyTest(@PathVariable int day,
                         @AuthenticationPrincipal LoginUser loginUser) {
+
+                String dayNumber = "Day" + day;
                 dailyService.completeDailyTest(loginUser.getUser().getId(), dayNumber);
                 return new ResponseEntity<>(new ResponseDto<>(1, "데일리 테스트 완료 처리 성공", null), HttpStatus.OK);
         }
