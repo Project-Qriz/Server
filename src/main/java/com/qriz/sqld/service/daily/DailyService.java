@@ -375,9 +375,14 @@ public class DailyService {
 
         // UserActivity를 통한 총 점수 계산
         List<UserActivity> activities = userActivityRepository.findByUserIdAndTestInfo(userId, dayNumber);
-        double totalScore = activities.stream()
-                .mapToDouble(UserActivity::getScore)
-                .sum();
+        double totalScore;
+        if (activities.isEmpty()) {
+            totalScore = 0.0;
+        } else {
+            totalScore = activities.stream()
+                    .mapToDouble(a -> a.getScore() != null ? a.getScore() : 0.0)
+                    .sum();
+        }
 
         // 기존 testStatus 정보 구성
         int attemptCount = userDaily.getAttemptCount();
