@@ -17,31 +17,32 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/v1")
+@RequestMapping("/api/v1/applications")
 public class ApplyController {
 
     private final ApplyService applyService;
 
     // 시험 접수 목록 조회
-    @GetMapping("/application-list")
+    @GetMapping
     public ResponseEntity<?> getApplicationList(@AuthenticationPrincipal LoginUser loginUser) {
         ApplicationRespDto.ApplyListRespDto applyListRespDto = applyService.applyList(loginUser);
         return new ResponseEntity<>(new ResponseDto<>(1, "시험 접수 목록 불러오기 성공", applyListRespDto), HttpStatus.OK);
     }
 
     // 시험 접수
-    @PostMapping("/apply")
+    @PostMapping
     public ResponseEntity<?> apply(@AuthenticationPrincipal LoginUser loginUser,
             @RequestBody @Valid ApplicationReqDto.ApplyReqDto applyReqDto) {
 
-        System.out.println("applyReqDto = " + applyReqDto);
-        ApplicationRespDto.ApplyRespDto applyRespDto = applyService.apply(applyReqDto, loginUser);
-        return new ResponseEntity<>(new ResponseDto<>(1, "시험 등록 성공", applyRespDto), HttpStatus.OK);
+        ApplicationRespDto.ApplyRespDto applyRespDto = applyService.apply(applyReqDto.getApplyId(), loginUser);
+        return new ResponseEntity<>(new ResponseDto<>(1, "시험 등록 성공", applyRespDto), HttpStatus.CREATED);
     }
 
     // 등록한 시험 접수 정보 조회
@@ -69,16 +70,14 @@ public class ApplyController {
     }
 
     // 접수 정보 변경
-    @PostMapping("/apply-modify")
+    @PatchMapping("/{uaId}")
     public ResponseEntity<?> modifyApplication(
+            @PathVariable Long uaId,
             @AuthenticationPrincipal LoginUser loginUser,
             @RequestBody @Valid ApplicationReqDto.ModifyReqDto modifyReqDto) {
-        ApplicationRespDto.ApplyRespDto modifyRespDto = applyService.modifyApplication(modifyReqDto, loginUser);
+        ApplicationRespDto.ApplyRespDto modifyRespDto = applyService.modifyApplication(uaId, modifyReqDto.getNewApplyId(), loginUser);
         return new ResponseEntity<>(
                 new ResponseDto<>(1, "시험 접수 변경 성공", modifyRespDto),
                 HttpStatus.OK);
     }
-
-    // 시험 등록 취소
-
 }
