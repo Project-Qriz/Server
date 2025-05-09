@@ -5,9 +5,13 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.qriz.sqld.domain.user.User;
 
 @Repository
 public interface UserExamSessionRepository extends JpaRepository<UserExamSession, Long> {
@@ -51,4 +55,9 @@ public interface UserExamSessionRepository extends JpaRepository<UserExamSession
          * @return 가장 최근 완료된 UserExamSession, 없으면 Optional.empty()
          */
         Optional<UserExamSession> findFirstByUserIdOrderByCompletionDateDesc(Long userId);
+
+        @Modifying
+        @Transactional
+        @Query("DELETE FROM UserExamSession use WHERE use.user = :user")
+        void deleteByUser(@Param("user") User user);
 }

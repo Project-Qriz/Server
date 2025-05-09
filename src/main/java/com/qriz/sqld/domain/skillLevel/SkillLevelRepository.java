@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -30,6 +31,7 @@ public interface SkillLevelRepository extends JpaRepository<SkillLevel, Long> {
     List<SkillLevel> findTop3ByUserIdOrderByCurrentAccuracyAsc(Long userId);
 
     @Modifying
+    @Transactional
     @Query("DELETE FROM SkillLevel sl WHERE sl.user = :user")
     void deleteByUser(@Param("user") User user);
 

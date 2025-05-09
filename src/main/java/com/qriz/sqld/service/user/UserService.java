@@ -1,18 +1,22 @@
 package com.qriz.sqld.service.user;
 
 import com.qriz.sqld.domain.apply.UserApplyRepository;
+import com.qriz.sqld.domain.daily.UserDaily;
 import com.qriz.sqld.domain.daily.UserDailyRepository;
+import com.qriz.sqld.domain.exam.UserExamSessionRepository;
 import com.qriz.sqld.domain.preview.UserPreviewTestRepository;
 import com.qriz.sqld.domain.skillLevel.SkillLevelRepository;
 import com.qriz.sqld.domain.survey.SurveyRepository;
 import com.qriz.sqld.domain.user.User;
 import com.qriz.sqld.domain.user.UserRepository;
 import com.qriz.sqld.dto.user.UserReqDto;
+import com.qriz.sqld.domain.UserActivity.UserActivity;
 import com.qriz.sqld.domain.UserActivity.UserActivityRepository;
 import com.qriz.sqld.dto.user.UserRespDto;
 import com.qriz.sqld.handler.ex.CustomApiException;
 import com.qriz.sqld.mail.domain.EmailVerification.EmailVerification;
 import com.qriz.sqld.mail.domain.EmailVerification.EmailVerificationRepository;
+import com.qriz.sqld.mail.domain.PasswordResetToken.PasswordResetTokenRepository;
 
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -28,6 +32,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.List;
 import java.util.Optional;
 
 @RequiredArgsConstructor
@@ -44,6 +49,9 @@ public class UserService {
     private final UserActivityRepository userActivityRepository;
     private final SurveyRepository surveyRepository;
     private final UserApplyRepository userApplyRepository;
+    private final UserExamSessionRepository userExamSessionRepository;
+    private final EmailVerificationRepository emailVerificationRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final RestTemplate restTemplate;
 
     @Value("${oauth2.google.client-id}")
@@ -158,13 +166,42 @@ public class UserService {
             disconnectSocialAccount(user, request.getAccessToken());
         }
 
-        // 기존 데이터 삭제 로직은 동일하게 유지
+        // 1) user_activity 먼저
+        List<UserActivity> activities = userActivityRepository.findByUserId(userId);
+        userActivityRepository.deleteAll(activities);
+
+        List<UserDaily> dailies = userDailyRepository.findByUser(user);
+
+        // 2) user_daily_skills
+        for (UserDaily daily : dailies) {
+            daily.getPlannedSkills().clear();
+        }
+
+        userDailyRepository.flush();
+
+        // 3) user_daily
         userDailyRepository.deleteByUser(user);
+
+        // 4) skill_level
         skillLevelRepository.deleteByUser(user);
+
+        // 5) preview_test
         userPreviewTestRepository.deleteByUser(user);
-        userActivityRepository.deleteByUser(user);
+
+        // 6) survey
         surveyRepository.deleteByUser(user);
+
+        // 7) apply
         userApplyRepository.deleteByUser(user);
+
+        // 8) exam_session
+        userExamSessionRepository.deleteByUser(user);
+
+        // 9) EmailVerification, PasswordResetToken
+        emailVerificationRepository.deleteByEmail(user.getEmail());
+        passwordResetTokenRepository.deleteByEmail(user.getEmail());
+
+        // 10) 최종 User 삭제
         userRepository.delete(user);
     }
 

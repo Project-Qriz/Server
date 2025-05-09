@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -15,6 +16,8 @@ public interface EmailVerificationRepository extends JpaRepository<EmailVerifica
     Optional<EmailVerification> findByEmailAndAuthNumberAndVerifiedFalse(String email, String authNumber);
 
     // 특정 이메일의 모든 인증 정보 삭제
+    @Modifying
+    @Transactional
     void deleteByEmail(String email);
 
     // 특정 이메일의 최근 인증 시도 횟수 조회 (최근 10분 이내)
