@@ -3,11 +3,13 @@ package com.qriz.sqld.service.apply;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -18,6 +20,7 @@ import com.qriz.sqld.domain.apply.UserApply;
 import com.qriz.sqld.domain.apply.UserApplyRepository;
 import com.qriz.sqld.dto.application.ApplicationReqDto;
 import com.qriz.sqld.dto.application.ApplicationRespDto;
+import com.qriz.sqld.dto.application.ApplicationRespDto.ApplyListRespDto.ApplicationDetail;
 import com.qriz.sqld.handler.ex.CustomApiException;
 
 import lombok.RequiredArgsConstructor;
@@ -32,38 +35,43 @@ public class ApplyService {
         private final Logger logger = LoggerFactory.getLogger(ApplyService.class);
 
         // 시험 접수 목록 조회
+        @Transactional
         public ApplicationRespDto.ApplyListRespDto applyList(LoginUser loginUser) {
-                // 1. 현재 사용자가 등록한 시험 정보 조회
-                Long registeredApplicationId = null;
-                UserApply userApply = userApplyRepository.findUserApplyByUserId(loginUser.getUser().getId())
-                                .orElse(null);
+                Long userId = loginUser.getUser().getId();
 
-                if (userApply != null) {
-                        registeredApplicationId = userApply.getApplication().getId();
-                }
+                // 1. 현재 사용자가 등록한 시험 정보 조회
+                Map<Long, Long> uaMap = userApplyRepository.findAllByUserId(userId)
+                                .stream()
+                                .collect(Collectors.toMap(
+                                                ua -> ua.getApplication().getId(),
+                                                UserApply::getId));
 
                 // 2. 전체 시험 목록 조회
-                List<Application> applications = applicationRepository.findAll();
-                List<ApplicationRespDto.ApplyListRespDto.ApplicationDetail> applicationDetails = applications.stream()
-                                .map(ApplicationRespDto.ApplyListRespDto.ApplicationDetail::new)
+                List<Application> apps = applicationRepository.findAll();
+
+                // 3. ApplicationDetail 리스트
+                List<ApplicationDetail> details = apps.stream()
+                                .map(app -> new ApplicationDetail(app, uaMap.get(app.getId())))
                                 .collect(Collectors.toList());
 
-                return new ApplicationRespDto.ApplyListRespDto(registeredApplicationId, applicationDetails);
+                // 4. 등록한 시험 Id(application) 및 등록한 레코드 Id(userApplyId)
+                Long registeredApplicationId = uaMap.keySet().stream().findFirst().orElse(null);
+                Long registeredApplyId = uaMap.values().stream().findFirst().orElse(null);
+
+                return new ApplicationRespDto.ApplyListRespDto(registeredApplicationId, registeredApplyId, details);
         }
 
         // 시험 접수
-        public ApplicationRespDto.ApplyRespDto apply(ApplicationReqDto.ApplyReqDto applyReqDto, LoginUser loginUser) {
-                // 1. 해당 사용자가 해당 시험에 접수 중인지 확인
-                boolean exists = userApplyRepository.existsByUserIdAndApplicationId(
-                                loginUser.getUser().getId(),
-                                applyReqDto.getApplyId());
+        public ApplicationRespDto.ApplyRespDto apply(Long applicationId, LoginUser loginUser) {
+                Long userId = loginUser.getUser().getId();
 
-                if (exists) {
+                // 1. 해당 사용자가 해당 시험에 접수 중인지 확인
+                if (userApplyRepository.existsByUserIdAndApplicationId(userId, applicationId)) {
                         throw new CustomApiException("이미 해당 시험에 접수하였습니다.");
                 }
 
                 // 2. 시험이 존재하는지 확인
-                Application application = applicationRepository.findById(applyReqDto.getApplyId())
+                Application application = applicationRepository.findById(applicationId)
                                 .orElseThrow(() -> new CustomApiException("존재하지 않는 시험입니다."));
 
                 // 3. 사용자 접수 정보 생성
@@ -120,36 +128,38 @@ public class ApplyService {
         }
 
         // 시험 일정 수정
-        public ApplicationRespDto.ApplyRespDto modifyApplication(ApplicationReqDto.ModifyReqDto modifyReqDto,
+        @Transactional
+        public ApplicationRespDto.ApplyRespDto modifyApplication(Long uaId, Long newApplicationId,
                         LoginUser loginUser) {
                 // 1. 현재 사용자의 접수 정보 조회
-                UserApply currentUserApply = userApplyRepository.findUserApplyByUserId(loginUser.getUser().getId())
+                UserApply ua = userApplyRepository.findById(uaId)
                                 .orElseThrow(() -> new CustomApiException("현재 접수된 시험을 찾을 수 없습니다."));
-
-                Long currentApplyId = currentUserApply.getApplication().getId();
+                if (!ua.getUser().getId().equals(loginUser.getUser().getId())) {
+                        throw new CustomApiException("권한이 없습니다.");
+                }
 
                 // 2. 동일한 시험 선택 시 예외 처리
-                if (currentApplyId.equals(modifyReqDto.getNewApplyId())) {
+                Long currentApplyId = ua.getApplication().getId();
+                if (currentApplyId.equals(newApplicationId)) {
                         throw new CustomApiException("현재 접수된 시험과 동일한 시험입니다.");
                 }
 
                 // 3. 새로운 시험 정보 확인
-                Application newApplication = applicationRepository.findById(modifyReqDto.getNewApplyId())
+                Application newApp = applicationRepository.findById(newApplicationId)
                                 .orElseThrow(() -> new CustomApiException("변경하려는 시험 정보를 찾을 수 없습니다."));
 
-                // 4. 기존 접수 삭제 및 새로운 접수 생성
-                userApplyRepository.delete(currentUserApply);
-                UserApply newUserApply = new UserApply(loginUser.getUser(), newApplication);
-                userApplyRepository.save(newUserApply);
+                // 4. 기존 레코드 업데이트
+                ua.setApplication(newApp);
+                userApplyRepository.save(ua); // Update
 
                 // 5. 응답 데이터 생성
                 DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MM-dd");
-                String period = formatPeriod(newApplication.getStartDate(), newApplication.getEndDate());
+                String period = formatPeriod(newApp.getStartDate(), newApp.getEndDate());
 
                 return new ApplicationRespDto.ApplyRespDto(
-                                newApplication.getExamName(),
+                                newApp.getExamName(),
                                 period,
-                                newApplication.getExamDate().format(dateFormatter),
-                                newApplication.getReleaseDate().format(dateFormatter));
+                                newApp.getExamDate().format(dateFormatter),
+                                newApp.getReleaseDate().format(dateFormatter));
         }
 }

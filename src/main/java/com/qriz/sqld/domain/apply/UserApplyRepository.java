@@ -1,5 +1,6 @@
 package com.qriz.sqld.domain.apply;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -28,4 +29,7 @@ public interface UserApplyRepository extends JpaRepository<UserApply, Long> {
     @Query("SELECT ua FROM UserApply ua WHERE ua.user.id = :userId AND ua.application.id = :applicationId")
     Optional<UserApply> findByUserIdAndApplicationId(@Param("userId") Long userId,
             @Param("applicationId") Long applicationId);
+
+    @Query("SELECT ua FROM UserApply ua WHERE ua.user.id = :userId")
+    List<UserApply> findAllByUserId(@Param("userId") Long userId);
 }

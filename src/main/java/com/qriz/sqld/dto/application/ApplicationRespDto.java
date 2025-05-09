@@ -15,28 +15,33 @@ public class ApplicationRespDto {
     @Setter
     public static class ApplyListRespDto {
         private Long registeredApplicationId;
+        private Long registeredUserApplyId;
         private List<ApplicationDetail> applications;
 
-        public ApplyListRespDto(Long registeredApplicationId, List<ApplicationDetail> applications) {
+        public ApplyListRespDto(Long registeredApplicationId, Long registeredUserApplyId,
+                List<ApplicationDetail> applications) {
             this.registeredApplicationId = registeredApplicationId;
+            this.registeredUserApplyId = registeredUserApplyId;
             this.applications = applications;
         }
 
         @Getter
         @Setter
         public static class ApplicationDetail {
-            private Long applyId;
+            private Long applicationId;
+            private Long userApplyId;
             private String examName;
             private String period;
             private String examDate;
             private String releaseDate;
 
-            public ApplicationDetail(Application application) {
+            public ApplicationDetail(Application application, Long userApplyId) {
                 DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MM.dd(E)", Locale.KOREAN);
                 DateTimeFormatter testDateFormatter = DateTimeFormatter.ofPattern("M월 d일(E)", Locale.KOREAN);
                 DateTimeFormatter releaseDateFormatter = DateTimeFormatter.ofPattern("M월 d일", Locale.KOREAN);
 
-                this.applyId = application.getId();
+                this.applicationId = application.getId();
+                this.userApplyId = userApplyId;
                 this.examName = application.getExamName();
                 // 접수 기간 포맷 수정
                 this.period = application.getStartDate().format(dateFormatter) + " 10:00 ~ "
