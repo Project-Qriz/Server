@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.qriz.sqld.domain.user.User;
 
@@ -20,6 +21,7 @@ public interface UserApplyRepository extends JpaRepository<UserApply, Long> {
     Optional<UserApply> findUserApplyByUserId(@Param("userId") Long userId);
 
     @Modifying
+    @Transactional
     @Query("DELETE FROM UserApply ua WHERE ua.user = :user")
     void deleteByUser(@Param("user") User user);
 

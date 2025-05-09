@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.qriz.sqld.domain.user.User;
 
@@ -30,6 +31,7 @@ public interface UserDailyRepository extends JpaRepository<UserDaily, Long> {
         List<UserDaily> findAllByUserId(Long userId);
 
         @Modifying
+        @Transactional
         @Query("DELETE FROM UserDaily ud where ud.user = :user")
         void deleteByUser(@Param("user") User user);
 
@@ -62,4 +64,8 @@ public interface UserDailyRepository extends JpaRepository<UserDaily, Long> {
         @Query("SELECT ud FROM UserDaily ud LEFT JOIN FETCH ud.plannedSkills WHERE ud.user.id = :userId AND ud.dayNumber = :dayNumber AND ud.isArchived = false")
         Optional<UserDaily> findByUserIdAndDayNumberAndIsArchivedFalse(@Param("userId") Long userId,
                         @Param("dayNumber") String dayNumber);
+
+        @Modifying
+        @Transactional
+        List<UserDaily> findByUser(User user);
 }

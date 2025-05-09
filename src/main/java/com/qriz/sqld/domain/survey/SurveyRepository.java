@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.qriz.sqld.domain.user.User;
 
@@ -26,6 +27,7 @@ public interface SurveyRepository extends JpaRepository<Survey, Long> {
     Optional<Survey> findByUserAndKnowsNothingTrue(User user);
 
     @Modifying
+    @Transactional
     @Query("DELETE FROM Survey s WHERE s.user = :user")
     void deleteByUser(@Param("user") User user);
 }
