@@ -166,6 +166,12 @@ public class DailyService {
             userActivity.setChecked(optionId); // (4) null 허용
             userActivity.setTimeSpent(activity.getTimeSpent());
             userActivity.setCorrection(isCorrect);
+
+            double activityScore = isCorrect
+                    ? getPointsForDifficulty(question.getDifficulty())
+                    : 0.0;
+            userActivity.setScore(activityScore);
+
             userActivity.setDate(LocalDateTime.now());
             userActivity.setUserDaily(userDaily);
 
@@ -193,12 +199,23 @@ public class DailyService {
                 }).sum();
         double userScore = testSubmitReqDto.getActivities().stream()
                 .mapToDouble(activity -> {
-                    Question question = questionRepository.findById(activity.getQuestion().getQuestionId())
+                    Long optId = activity.getOptionId();
+                    // 1) 옵션을 선택하지 않았으면 점수 0
+                    if (optId == null) {
+                        return 0.0;
+                    }
+                    // 2) 선택한 문제와 옵션을 안전하게 불러와서
+                    Question question = questionRepository.findById(
+                            activity.getQuestion().getQuestionId())
                             .orElseThrow(() -> new CustomApiException("문제를 찾을 수 없습니다."));
-                    Option option = optionRepository.findById(activity.getOptionId())
+                    Option submittedOption = optionRepository.findById(optId)
                             .orElseThrow(() -> new CustomApiException("선택한 옵션을 찾을 수 없습니다."));
-                    return option.isAnswer() ? getPointsForDifficulty(question.getDifficulty()) : 0;
-                }).sum();
+                    // 3) 정답이면 난이도에 따른 점수, 아니면 0
+                    return submittedOption.isAnswer()
+                            ? getPointsForDifficulty(question.getDifficulty())
+                            : 0.0;
+                })
+                .sum();
         boolean isPassed = userScore >= totalPossibleScore * 0.7;
         userDaily.updateTestStatus(isPassed);
         if (isPassed) {
@@ -399,7 +416,7 @@ public class DailyService {
             String previousDay = "Day" + (currentDayNum - 1);
             UserDaily previousDaily = userDailyRepository.findByUserIdAndDayNumber(userId, previousDay)
                     .orElse(null);
-            if (previousDaily != null && previousDaily.isPassed() && previousDaily.getCompletionDate() != null) {
+            if (previousDaily != null && previousDaily.getCompletionDate() != null) {
                 // 이전 Day가 완료되었고, 오늘의 계획일자가 이전 완료일 다음 날(또는 이후)이어야 진행 가능
                 LocalDate allowedDate = previousDaily.getCompletionDate().plusDays(1);
                 available = !userDaily.getPlanDate().isBefore(allowedDate);
