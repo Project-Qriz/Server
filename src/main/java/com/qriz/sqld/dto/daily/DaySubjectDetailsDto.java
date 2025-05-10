@@ -19,17 +19,15 @@ public class DaySubjectDetailsDto {
 
     @Getter
     public static class SubjectDetails {
-        private Long skillId;
         private String title;
         private double totalScore;
         private List<ItemScore> items = new ArrayList<>();
 
-        public SubjectDetails(Long skillId, String title) {
-            this.skillId = skillId;
+        public SubjectDetails(String title) {
             this.title = title;
         }
 
-        public void addScore(String type, double score) {
+        public void addScore(Long skillId, String type, double score) {
             ItemScore existing = items.stream()
                     .filter(i -> i.getType().equals(type))
                     .findFirst()

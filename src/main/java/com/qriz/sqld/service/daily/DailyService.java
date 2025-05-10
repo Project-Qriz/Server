@@ -353,8 +353,8 @@ public class DailyService {
 
             // SubjectDetails 객체 생성 또는 가져와서 해당 type으로 점수 누적
             subjectDetailsMap
-                    .computeIfAbsent(skillId, id -> new DaySubjectDetailsDto.SubjectDetails(id, title))
-                    .addScore(type, score);
+                    .computeIfAbsent(skillId, id -> new DaySubjectDetailsDto.SubjectDetails(title))
+                    .addScore(skillId, type, score);
 
             // 문제별 상세 결과 DTO 추가
             dailyResults.add(new DaySubjectDetailsDto.DailyResultDto(
