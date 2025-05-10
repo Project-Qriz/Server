@@ -40,6 +40,7 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -326,52 +327,43 @@ public class DailyService {
 
     @Transactional(readOnly = true)
     public DaySubjectDetailsDto.Response getDaySubjectDetails(Long userId, String dayNumber) {
-        // 1) 해당 일자의 UserDaily 조회
+        // 1) UserDaily 조회
         UserDaily userDaily = userDailyRepository
                 .findByUserIdAndDayNumberAndIsArchivedFalse(userId, dayNumber)
                 .orElseThrow(() -> new CustomApiException("해당 일자의 데일리 플랜을 찾을 수 없습니다."));
         boolean passed = userDaily.isPassed();
 
-        // 2) 해당 dayNumber로 저장된 UserActivity 목록 조회
+        // 2) 활동(Activity) 전체를 불러온 뒤
         List<UserActivity> activities = userActivityRepository.findByUserIdAndTestInfo(userId, dayNumber);
 
-        // 3) 스킬별 집계용 Map과 결과 리스트 초기화
-        Map<Long, DaySubjectDetailsDto.SubjectDetails> subjectDetailsMap = new HashMap<>();
+        // 3) 세부항목별 점수 합계를 위한 LinkedHashMap(입력 순서 유지)
+        Map<String, Double> items = new LinkedHashMap<>();
+        // 4) 문제별 결과 리스트
         List<DaySubjectDetailsDto.DailyResultDto> dailyResults = new ArrayList<>();
 
-        // 4) 각 활동(Activity)마다 점수 계산 및 DTO 매핑
         for (UserActivity activity : activities) {
-            Question question = activity.getQuestion();
-            Skill skill = question.getSkill();
-
-            Long skillId = skill.getId();
-            String title = skill.getTitle();
-            String type = skill.getKeyConcepts(); // 세부 항목명
+            // a) “세부 항목” 키(예: “조인”, “SELECT 문”)
+            String detailType = activity.getQuestion().getSkill().getKeyConcepts();
+            // b) 정답 여부에 따른 점수
             double score = activity.isCorrection()
-                    ? getPointsForDifficulty(question.getDifficulty())
+                    ? getPointsForDifficulty(activity.getQuestion().getDifficulty())
                     : 0.0;
+            // c) items 맵에 누적
+            items.merge(detailType, score, Double::sum);
 
-            // SubjectDetails 객체 생성 또는 가져와서 해당 type으로 점수 누적
-            subjectDetailsMap
-                    .computeIfAbsent(skillId, id -> new DaySubjectDetailsDto.SubjectDetails(title))
-                    .addScore(skillId, type, score);
-
-            // 문제별 상세 결과 DTO 추가
+            // d) 문제별 응답 DTO 추가 (detailType 포함)
             dailyResults.add(new DaySubjectDetailsDto.DailyResultDto(
-                    question.getId(),
-                    title,
-                    question.getQuestion(),
+                    activity.getQuestion().getId(),
+                    detailType,
+                    activity.getQuestion().getQuestion(),
                     activity.isCorrection()));
         }
 
-        // 5) Map → List 변환
-        List<DaySubjectDetailsDto.SubjectDetails> subjectDetailsList = new ArrayList<>(subjectDetailsMap.values());
-
-        // 6) 최종 Response DTO 반환
+        // 5) 맵과 리스트를 넣어 최종 응답 생성
         return new DaySubjectDetailsDto.Response(
                 dayNumber,
                 passed,
-                subjectDetailsList,
+                items,
                 dailyResults);
     }
 

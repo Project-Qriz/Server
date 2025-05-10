@@ -1,7 +1,7 @@
 package com.qriz.sqld.dto.daily;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -13,42 +13,13 @@ public class DaySubjectDetailsDto {
     public static class Response {
         private String dayNumber;
         private boolean passed;
-        private List<SubjectDetails> userDailyInfoList;
+        private Map<String, Double> items;
         private List<DailyResultDto> subjectResultsList;
-    }
 
-    @Getter
-    public static class SubjectDetails {
-        private String title;
-        private double totalScore;
-        private List<ItemScore> items = new ArrayList<>();
-
-        public SubjectDetails(String title) {
-            this.title = title;
-        }
-
-        public void addScore(Long skillId, String type, double score) {
-            ItemScore existing = items.stream()
-                    .filter(i -> i.getType().equals(type))
-                    .findFirst()
-                    .orElse(null);
-
-            if (existing == null) {
-                items.add(new ItemScore(skillId, type, score));
-            } else {
-                existing.addScore(score);
-            }
-            totalScore += score;
-        }
-
-        public void adjustTotalScore() {
-            if (totalScore > 100) {
-                double factor = 100.0 / totalScore;
-                totalScore = 100.0;
-                for (ItemScore item : items) {
-                    item.adjustScore(factor);
-                }
-            }
+        public double getTotalScore() {
+            return items.values().stream()
+                    .mapToDouble(Double::doubleValue)
+                    .sum();
         }
     }
 
@@ -56,24 +27,8 @@ public class DaySubjectDetailsDto {
     @AllArgsConstructor
     public static class DailyResultDto {
         private Long questionId;
-        private String skillName;
+        private String detailType;
         private String question;
         private boolean correction;
-    }
-
-    @Getter
-    @AllArgsConstructor
-    public static class ItemScore {
-        private Long skillId;
-        private String type;
-        private double score;
-
-        public void addScore(double additionalScore) {
-            this.score += additionalScore;
-        }
-
-        public void adjustScore(double factor) {
-            this.score *= factor;
-        }
     }
 }
