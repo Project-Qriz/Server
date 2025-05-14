@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.qriz.sqld.config.auth.LoginUser;
@@ -193,6 +194,39 @@ public class DailyController {
                 List<UserDailyDto.DailySkillDto> dailyConcepts = dailyService
                                 .getDailyConcepts(loginUser.getUser().getId(), dayNumber);
                 return new ResponseEntity<>(new ResponseDto<>(1, "오늘 공부할 개념 불러오기 성공", dailyConcepts), HttpStatus.OK);
+        }
+
+        /**
+         * 주간 복습 테스트 결과 (주요항목별 점수)
+         * 
+         * @param day
+         * @param subject
+         * @param loginUser
+         * @return
+         */
+        @GetMapping("/weekly-reviews/{day}")
+        public ResponseEntity<ResponseDto<DaySubjectDetailsDto.WeeklyReviewRspDto>> getWeeklyReview(
+                        @PathVariable int day,
+                        @RequestParam(required = false) String subject, // ← 추가
+                        @AuthenticationPrincipal LoginUser loginUser) {
+
+                String dayNumber = "Day" + day;
+                // 1) 과목별 리스트
+                List<DaySubjectDetailsDto.DailySubjectDetails> subjects = dailyService.getWeeklyReviewBySubject(
+                                loginUser.getUser().getId(), dayNumber, subject);
+
+                // 2) 전체 총점 계산
+                double overallTotal = subjects.stream()
+                                .mapToDouble(DaySubjectDetailsDto.DailySubjectDetails::getTotalScore)
+                                .sum();
+
+                // 3) 래퍼 DTO 생성
+                DaySubjectDetailsDto.WeeklyReviewRspDto responseDto = new DaySubjectDetailsDto.WeeklyReviewRspDto(
+                                subjects, overallTotal);
+
+                // 4) ResponseDto에 감싸서 반환
+                return ResponseEntity.ok(
+                                new ResponseDto<>(1, "주간 복습 테스트 결과 조회", responseDto));
         }
 
         // 테스트용

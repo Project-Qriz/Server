@@ -32,4 +32,6 @@ public interface UserApplyRepository extends JpaRepository<UserApply, Long> {
 
     @Query("SELECT ua FROM UserApply ua WHERE ua.user.id = :userId")
     List<UserApply> findAllByUserId(@Param("userId") Long userId);
+
+    boolean existsByUserId(Long userId);
 }
