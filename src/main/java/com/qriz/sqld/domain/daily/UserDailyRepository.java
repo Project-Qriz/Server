@@ -15,7 +15,7 @@ import com.qriz.sqld.domain.user.User;
 
 @Repository
 public interface UserDailyRepository extends JpaRepository<UserDaily, Long> {
-        @Query("SELECT DISTINCT ud FROM UserDaily ud LEFT JOIN FETCH ud.plannedSkills WHERE ud.user.id = :userId ORDER BY ud.planDate ASC")
+        @Query("SELECT DISTINCT ud FROM UserDaily ud LEFT JOIN FETCH ud.plannedSkills WHERE ud.user.id = :userId AND ud.isArchived = false ORDER BY ud.planDate ASC")
         List<UserDaily> findByUserIdWithPlannedSkillsOrderByPlanDateAsc(@Param("userId") Long userId);
 
         @Query("SELECT ud FROM UserDaily ud LEFT JOIN FETCH ud.plannedSkills WHERE ud.user.id = :userId AND ud.dayNumber = :dayNumber")
@@ -61,9 +61,11 @@ public interface UserDailyRepository extends JpaRepository<UserDaily, Long> {
                         "ORDER BY ud.archivedAt DESC")
         List<UserDaily> findByUserIdAndArchivedTrueOrderByArchivedAtDesc(@Param("userId") Long userId);
 
-        @Query("SELECT ud FROM UserDaily ud LEFT JOIN FETCH ud.plannedSkills WHERE ud.user.id = :userId AND ud.dayNumber = :dayNumber AND ud.isArchived = false")
+        @Query("SELECT DISTINCT ud FROM UserDaily ud LEFT JOIN FETCH ud.plannedSkills WHERE ud.user.id = :userId AND ud.dayNumber = :dayNumber AND ud.isArchived = false")
         Optional<UserDaily> findByUserIdAndDayNumberAndIsArchivedFalse(@Param("userId") Long userId,
                         @Param("dayNumber") String dayNumber);
+
+        boolean existsByUserIdAndDayNumberAndIsArchivedFalse(Long userId, String dayNumber);
 
         @Modifying
         @Transactional
