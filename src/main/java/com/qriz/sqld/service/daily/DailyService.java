@@ -45,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -332,38 +333,42 @@ public class DailyService {
                 .findByUserIdAndDayNumberAndIsArchivedFalse(userId, dayNumber)
                 .orElseThrow(() -> new CustomApiException("해당 일자의 데일리 플랜을 찾을 수 없습니다."));
         boolean passed = userDaily.isPassed();
+        boolean reviewDay = userDaily.isReviewDay();
+        boolean comprehensiveReviewDay = userDaily.isComprehensiveReviewDay();
 
-        // 2) 활동(Activity) 전체를 불러온 뒤
+        // 2) 활동(Activity) 전체 조회
         List<UserActivity> activities = userActivityRepository.findByUserIdAndTestInfo(userId, dayNumber);
 
-        // 3) 세부항목별 점수 합계를 위한 LinkedHashMap(입력 순서 유지)
-        Map<String, Double> items = new LinkedHashMap<>();
-        // 4) 문제별 결과 리스트
+        // 3) skillId 별 점수 누적용 Map
+        Map<Long, Double> itemMap = new LinkedHashMap<>();
         List<DaySubjectDetailsDto.DailyResultDto> dailyResults = new ArrayList<>();
 
         for (UserActivity activity : activities) {
-            // a) “세부 항목” 키(예: “조인”, “SELECT 문”)
-            String detailType = activity.getQuestion().getSkill().getKeyConcepts();
-            // b) 정답 여부에 따른 점수
+            Long skillId = activity.getQuestion().getSkill().getId();
             double score = activity.isCorrection()
                     ? getPointsForDifficulty(activity.getQuestion().getDifficulty())
                     : 0.0;
-            // c) items 맵에 누적
-            items.merge(detailType, score, Double::sum);
+            itemMap.merge(skillId, score, Double::sum);
 
-            // d) 문제별 응답 DTO 추가 (detailType 포함)
             dailyResults.add(new DaySubjectDetailsDto.DailyResultDto(
                     activity.getQuestion().getId(),
-                    detailType,
+                    activity.getQuestion().getSkill().getKeyConcepts(),
                     activity.getQuestion().getQuestion(),
                     activity.isCorrection()));
         }
 
-        // 5) 맵과 리스트를 넣어 최종 응답 생성
+        // 4) Map<Long,Double> → List<SubItemDto>
+        List<DaySubjectDetailsDto.SubItemDto> subItems = itemMap.entrySet().stream()
+                .map(e -> new DaySubjectDetailsDto.SubItemDto(e.getKey(), e.getValue()))
+                .collect(Collectors.toList());
+
+        // 5) Response 생성
         return new DaySubjectDetailsDto.Response(
                 dayNumber,
                 passed,
-                items,
+                reviewDay,
+                comprehensiveReviewDay,
+                subItems,
                 dailyResults);
     }
 
@@ -449,6 +454,112 @@ public class DailyService {
             dto.setDescription(skill.getDescription());
             return dto;
         }).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<DaySubjectDetailsDto.DailySubjectDetails> getWeeklyReviewBySubject(
+            Long userId, String dayNumber, String subjectParam) {
+
+        // 1) 영어 코드를 한글 과목명으로 매핑 (파라미터가 없으면 null)
+        final String mappedSubject = (subjectParam != null && !subjectParam.isBlank())
+                ? mapSubject(subjectParam)
+                : null;
+
+        // 2) 이번 주 월~일 활동 조회
+        UserDaily current = userDailyRepository
+                .findByUserIdAndDayNumberAndIsArchivedFalse(userId, dayNumber)
+                .orElseThrow(() -> new CustomApiException("해당 일자의 플랜이 없습니다."));
+        LocalDate weekStart = current.getPlanDate().with(DayOfWeek.MONDAY);
+        LocalDate weekEnd = weekStart.plusDays(6);
+
+        List<UserActivity> acts = userActivityRepository
+                .findByUserIdAndDateBetween(
+                        userId,
+                        weekStart.atStartOfDay(),
+                        weekEnd.atTime(LocalTime.MAX));
+        Set<String> subjectsInActs = acts.stream()
+                .map(ua -> ua.getQuestion().getSkill().getTitle())
+                .collect(Collectors.toSet());
+        log.info("🔍 이번 주 활동에 포함된 과목 코드들: {}", subjectsInActs);
+
+        // 3) mappedSubject(한글) 이 있으면, Skill.title(한글)과 비교해서 필터링
+        if (mappedSubject != null) {
+            acts = acts.stream()
+                    .filter(ua -> mappedSubject.equals(
+                            ua.getQuestion().getSkill().getTitle()))
+                    .collect(Collectors.toList());
+        }
+
+        // 4) 과목별 그룹핑 (Skill.title 기준, 한글 과목명)
+        Map<String, List<UserActivity>> bySubject = acts.stream()
+                .collect(Collectors.groupingBy(
+                        ua -> ua.getQuestion().getSkill().getTitle(),
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+
+        List<DaySubjectDetailsDto.DailySubjectDetails> result = new ArrayList<>();
+        for (Map.Entry<String, List<UserActivity>> e : bySubject.entrySet()) {
+            String subjectName = e.getKey(); // “1과목” or “2과목”
+            List<UserActivity> subActs = e.getValue();
+
+            // 5) majorItem → subItem 점수 누적
+            Map<String, Map<String, Double>> majorMap = new LinkedHashMap<>();
+            for (UserActivity ua : subActs) {
+                Question q = ua.getQuestion();
+                Skill skill = q.getSkill();
+                String major = skill.getType();
+                String subItem = skill.getKeyConcepts();
+                int difficulty = q.getDifficulty() != null ? q.getDifficulty() : 0;
+                double pts = ua.isCorrection() ? getPointsForDifficulty(difficulty) : 0.0;
+
+                majorMap
+                        .computeIfAbsent(major, k -> new LinkedHashMap<>())
+                        .merge(subItem, pts, Double::sum);
+            }
+
+            // 6) DTO 변환
+            List<DaySubjectDetailsDto.DailySubjectDetails.MajorItemDetail> majors = majorMap.entrySet()
+                    .stream()
+                    .map(me -> {
+                        double majorScore = me.getValue().values().stream()
+                                .mapToDouble(Double::doubleValue).sum();
+                        List<DaySubjectDetailsDto.DailySubjectDetails.SubItemScore> subList = me
+                                .getValue().entrySet().stream()
+                                .map(se -> new DaySubjectDetailsDto.DailySubjectDetails.SubItemScore(
+                                        se.getKey(), se.getValue()))
+                                .collect(Collectors.toList());
+                        return new DaySubjectDetailsDto.DailySubjectDetails.MajorItemDetail(
+                                me.getKey(), majorScore, subList);
+                    })
+                    .collect(Collectors.toList());
+
+            double totalScore = majors.stream()
+                    .mapToDouble(DaySubjectDetailsDto.DailySubjectDetails.MajorItemDetail::getScore)
+                    .sum();
+
+            // 7) title: 파라미터 없으면 순서대로 “1과목”, “2과목”… 있으면 mappedSubject
+            String title = (mappedSubject == null)
+                    ? subjectName
+                    : mappedSubject;
+
+            result.add(new DaySubjectDetailsDto.DailySubjectDetails(
+                    title, totalScore, majors));
+        }
+
+        return result;
+    }
+
+    /**
+     * 영어 코드(subject1/subject2) → 한글 과목명("1과목"/"2과목") 매핑
+     */
+    private String mapSubject(String subjectCode) {
+        if ("subject1".equalsIgnoreCase(subjectCode)) {
+            return "1과목";
+        } else if ("subject2".equalsIgnoreCase(subjectCode)) {
+            return "2과목";
+        } else {
+            throw new CustomApiException("Unsupported subject: " + subjectCode);
+        }
     }
 
     // 테스트용

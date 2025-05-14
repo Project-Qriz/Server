@@ -65,20 +65,25 @@ public class ApplyService {
         public ApplicationRespDto.ApplyRespDto apply(Long applicationId, LoginUser loginUser) {
                 Long userId = loginUser.getUser().getId();
 
-                // 1. 해당 사용자가 해당 시험에 접수 중인지 확인
+                // 1. 이미 어떤 시험에 접수된 상태인지 체크 (새로 접수 불가)
+                if (userApplyRepository.existsByUserId(userId)) {
+                        throw new CustomApiException("이미 다른 시험에 접수 중이므로, 새로 접수할 수 없습니다.");
+                }
+
+                // 2. 해당 사용자가 해당 시험에 접수 중인지 확인
                 if (userApplyRepository.existsByUserIdAndApplicationId(userId, applicationId)) {
                         throw new CustomApiException("이미 해당 시험에 접수하였습니다.");
                 }
 
-                // 2. 시험이 존재하는지 확인
+                // 3. 시험이 존재하는지 확인
                 Application application = applicationRepository.findById(applicationId)
                                 .orElseThrow(() -> new CustomApiException("존재하지 않는 시험입니다."));
 
-                // 3. 사용자 접수 정보 생성
+                // 4. 사용자 접수 정보 생성
                 UserApply userApply = new UserApply(loginUser.getUser(), application);
                 userApplyRepository.save(userApply);
 
-                // 4. 응답 데이터 생성
+                // 5. 응답 데이터 생성
                 DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MM-dd");
                 String period = formatPeriod(application.getStartDate(), application.getEndDate());
 
