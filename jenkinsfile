@@ -9,12 +9,34 @@ pipeline {
         AWS_CREDENTIALS = 'aws-credentials'
         PROPERTIES_FILE = 'spring-dev-properties'
         HEALTH_CHECK_URL = 'http://dev-alb-982145495.ap-northeast-2.elb.amazonaws.com/api/health'
+        // 롤백을 위한 이미지 정보 파일 경로
+        LAST_SUCCESSFUL_DEPLOY_FILE = '/var/jenkins_home/qriz-api-last-successful-deploy.txt'
     }
 
     stages {
         stage('Checkout') {
             steps {
                 git branch: 'dev', credentialsId: 'github-token', url: 'https://github.com/Project-Qriz/Server.git'
+            }
+        }
+
+        stage('Get Last Successful Image') {
+            steps {
+                script {
+                    // 이전에 성공적으로 배포된 이미지 태그를 읽어옴
+                    try {
+                        def lastSuccessfulImage = sh(
+                            script: "cat ${LAST_SUCCESSFUL_DEPLOY_FILE} || echo 'none'",
+                            returnStdout: true
+                        ).trim()
+                        
+                        echo "이전에 성공적으로 배포된 이미지: ${lastSuccessfulImage}"
+                        env.LAST_SUCCESSFUL_IMAGE = lastSuccessfulImage != 'none' ? lastSuccessfulImage : null
+                    } catch (Exception e) {
+                        echo "이전 배포 정보를 읽을 수 없습니다: ${e.message}"
+                        env.LAST_SUCCESSFUL_IMAGE = null
+                    }
+                }
             }
         }
 
@@ -43,14 +65,14 @@ pipeline {
                     ]]) {
                         sh """
                             aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
-                            docker tag ${DOCKER_IMAGE}:latest 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
-                            docker push 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+                            docker tag ${DOCKER_IMAGE}:latest ${ECR_REGISTRY}/qriz/api:${BUILD_NUMBER}
+                            docker push ${ECR_REGISTRY}/qriz/api:${BUILD_NUMBER}
+                            docker tag ${DOCKER_IMAGE}:latest ${ECR_REGISTRY}/qriz/api:latest
+                            docker push ${ECR_REGISTRY}/qriz/api:latest
                         """
-
-                        // 또는 내부 레지스트리를 사용하는 경우
-                        // sh 'docker login your-registry -u username -p password'
-                        // sh 'docker tag your-backend-app:latest your-registry/your-backend-app:latest'
-                        // sh 'docker push your-registry/your-backend-app:latest'
+                        
+                        // 이번 배포에서 사용할 이미지를 환경 변수에 저장
+                        env.CURRENT_DEPLOY_IMAGE = "${ECR_REGISTRY}/qriz/api:${BUILD_NUMBER}"
                     }
                 }
             }
@@ -69,22 +91,25 @@ pipeline {
                     ]
                 ]) {
                     // 실행할 스크립트 파일 생성
-                                writeFile file: 'deploy.sh', text: '''#!/bin/bash
+                    writeFile file: 'deploy.sh', text: """#!/bin/bash
                     # 8081 포트를 사용하는 컨테이너 찾기
-                    CONTAINER_ID=$(docker ps | grep 8081 | awk '{print $1}')
-                    if [ ! -z "$CONTAINER_ID" ]; then
-                        echo "8081 포트를 사용하는 컨테이너 $CONTAINER_ID 를 중지합니다."
-                        docker stop $CONTAINER_ID
-                        docker rm $CONTAINER_ID
+                    CONTAINER_ID=\$(docker ps | grep 8081 | awk '{print \$1}')
+                    if [ ! -z "\$CONTAINER_ID" ]; then
+                        echo "8081 포트를 사용하는 컨테이너 \$CONTAINER_ID 를 중지합니다."
+                        docker stop \$CONTAINER_ID
+                        docker rm \$CONTAINER_ID
                     fi
 
                     # 기존 backend-container 제거
                     docker rm -f backend-container || true
 
                     # 새 이미지 가져오기 및 실행
-                    docker pull 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+                    docker pull ${env.CURRENT_DEPLOY_IMAGE}
                     docker run -d --name backend-container -p 8081:8081 \\
-                      314146328505.dkr.ecr.ap-northeast-2.amazonaws.com/qriz/api:latest
+                      ${env.CURRENT_DEPLOY_IMAGE}
+
+                    # 컨테이너 상태 확인
+                    docker ps | grep backend-container
 
                     # 사용하지 않는 Docker 이미지 정리
                     echo "사용하지 않는 Docker 이미지를 정리합니다."
@@ -96,8 +121,8 @@ pipeline {
                     docker container prune -f
 
                     # 이전 버전의 qriz/api 이미지를 제외한 모든 이미지 유지 (최신 5개만 유지)
-                    docker images | grep "qriz/api" | grep -v "latest" | sort -r | awk 'NR>5 {print $3}' | xargs -r docker rmi
-                    '''
+                    docker images | grep "qriz/api" | grep -v "latest" | sort -r | awk 'NR>5 {print \$3}' | xargs -r docker rmi
+                    """
 
                     // 스크립트 파일을 대상 서버로 전송하고 실행
                     sh '''
@@ -152,20 +177,27 @@ pipeline {
                                 echo "헬스 체크 성공: 애플리케이션이 정상적으로 작동 중입니다."
                                 env.HEALTH_CHECK_STATUS = "SUCCESS"
                                 env.HEALTH_CHECK_MESSAGE = "애플리케이션이 정상적으로 작동 중입니다."
+                                
+                                // 현재 배포 이미지를 성공한 배포로 기록
+                                sh "echo '${env.CURRENT_DEPLOY_IMAGE}' > ${LAST_SUCCESSFUL_DEPLOY_FILE}"
+                                echo "성공한 배포 이미지 기록: ${env.CURRENT_DEPLOY_IMAGE}"
                             } else {
                                 echo "헬스 체크 실패: 애플리케이션이 비정상 상태입니다. 상태: ${jsonResponse.data.status}"
                                 env.HEALTH_CHECK_STATUS = "FAILURE"
                                 env.HEALTH_CHECK_MESSAGE = "애플리케이션이 비정상 상태입니다. 상태: ${jsonResponse.data.status}"
+                                error "헬스 체크 실패: 애플리케이션이 비정상 상태입니다."
                             }
                         } catch (Exception e) {
                             echo "헬스 체크 응답 파싱 실패: ${e.message}"
                             env.HEALTH_CHECK_STATUS = "FAILURE"
                             env.HEALTH_CHECK_MESSAGE = "헬스 체크 응답 파싱 실패: ${e.message}"
+                            error "헬스 체크 응답 파싱 실패: ${e.message}"
                         }
                     } else {
                         echo "헬스 체크 실패: HTTP 상태 코드 ${httpStatusCode}"
                         env.HEALTH_CHECK_STATUS = "FAILURE"
                         env.HEALTH_CHECK_MESSAGE = "헬스 체크 실패: HTTP 상태 코드 ${httpStatusCode}"
+                        error "헬스 체크 실패: HTTP 상태 코드 ${httpStatusCode}"
                     }
                 }
             }
@@ -175,43 +207,107 @@ pipeline {
     post {
         success {
             script {
-                if (env.HEALTH_CHECK_STATUS == "SUCCESS") {
-                    echo '도커 이미지 빌드, 배포 및 헬스 체크가 성공적으로 완료되었습니다!'
-                    slackSend(
-                        color: 'good',
-                        message: "✅ 빌드 및 배포 성공 - ${env.JOB_NAME} #${env.BUILD_NUMBER}\n" +
-                                "🔍 헬스 체크: 성공\n" +
-                                "📊 상태: 애플리케이션이 정상적으로 작동 중입니다.\n" +
-                                "🔗 상세 정보: (<${env.BUILD_URL}|빌드 결과 보기>)"
-                    )
-                } else if (env.HEALTH_CHECK_STATUS == "FAILURE") {
-                    echo '도커 이미지 빌드 및 배포는 성공했지만, 애플리케이션 헬스 체크에 실패했습니다!'
-                    slackSend(
-                        color: 'warning',
-                        message: "⚠️ 배포 경고 - ${env.JOB_NAME} #${env.BUILD_NUMBER}\n" +
-                                "✅ 빌드 및 컨테이너 배포: 성공\n" +
-                                "❌ 헬스 체크: 실패 (${env.HEALTH_CHECK_MESSAGE})\n" +
-                                "⚠️ 조치 필요: 컨테이너는 실행 중이지만 애플리케이션이 올바르게 작동하지 않을 수 있습니다.\n" +
-                                "🔗 상세 정보: (<${env.BUILD_URL}|빌드 결과 보기>)"
-                    )
-                } else {
-                    echo '도커 이미지 빌드 및 배포가 성공적으로 완료되었습니다!'
-                    slackSend(
-                        color: 'good',
-                        message: "빌드 성공 :white_check_mark: - ${env.JOB_NAME} #${env.BUILD_NUMBER} (<${env.BUILD_URL}|상세 보기>)"
-                    )
-                }
+                echo '도커 이미지 빌드, 배포 및 헬스 체크가 성공적으로 완료되었습니다!'
+                slackSend(
+                    color: 'good',
+                    message: "✅ 빌드 및 배포 성공 - ${env.JOB_NAME} #${env.BUILD_NUMBER}\n" +
+                            "🔍 헬스 체크: 성공\n" +
+                            "📊 상태: 애플리케이션이 정상적으로 작동 중입니다.\n" +
+                            "🔗 상세 정보: (<${env.BUILD_URL}|빌드 결과 보기>)"
+                )
             }
         }
         failure {
-            echo '배포 중 오류가 발생했습니다.'
-            slackSend(
-                color: 'danger',
-                message: "❌ 빌드 실패 - ${env.JOB_NAME} #${env.BUILD_NUMBER}\n" +
-                         "🚨 오류: 빌드 또는 배포 과정에서 실패가 발생했습니다.\n" +
-                         "🔗 상세 정보: (<${env.BUILD_URL}|빌드 결과 보기>)"
-            )
-            // Todo: 실패 시 이전 버전으로 롤백하는 로직 
+            script {
+                echo '배포 중 오류가 발생하거나 헬스 체크에 실패했습니다. 롤백을 시도합니다.'
+                
+                // 이전 성공한 배포 이미지가 있는지 확인
+                if (env.LAST_SUCCESSFUL_IMAGE) {
+                    withCredentials([
+                        sshUserPrivateKey(credentialsId: 'backend-server-ssh-key', keyFileVariable: 'SSH_KEY'),
+                        [
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: "${AWS_CREDENTIALS}",
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]
+                    ]) {
+                        // 롤백 스크립트 생성
+                        writeFile file: 'rollback.sh', text: """#!/bin/bash
+                        echo "이전 버전으로 롤백을 시작합니다..."
+                        
+                        # 현재 컨테이너 중지
+                        docker rm -f backend-container || true
+                        
+                        # 이전 성공 이미지로 롤백
+                        docker pull ${env.LAST_SUCCESSFUL_IMAGE}
+                        docker run -d --name backend-container -p 8081:8081 ${env.LAST_SUCCESSFUL_IMAGE}
+                        
+                        echo "롤백 완료. 컨테이너 상태:"
+                        docker ps | grep backend-container
+                        """
+                        
+                        // 롤백 실행
+                        sh '''
+                            chmod +x rollback.sh
+                            scp -i ${SSH_KEY} -o StrictHostKeyChecking=no rollback.sh ec2-user@10.0.2.212:~/rollback.sh
+                            
+                            ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ec2-user@10.0.2.212 "
+                                # AWS ECR 로그인
+                                export AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID}' &&
+                                export AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY}' &&
+                                aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 314146328505.dkr.ecr.ap-northeast-2.amazonaws.com &&
+                                
+                                # 롤백 스크립트 실행
+                                chmod +x ~/rollback.sh &&
+                                ~/rollback.sh
+                            "
+                        '''
+                        
+                        // 롤백 후 헬스 체크
+                        sleep(time: 60, unit: "SECONDS")
+                        def rollbackHealthStatus = sh(
+                            script: "curl -s -o /dev/null -w '%{http_code}' ${HEALTH_CHECK_URL}",
+                            returnStdout: true
+                        ).trim()
+                        
+                        if (rollbackHealthStatus == "200") {
+                            env.ROLLBACK_STATUS = "SUCCESS"
+                        } else {
+                            env.ROLLBACK_STATUS = "FAILURE"
+                        }
+                        
+                        // 롤백 결과 슬랙 알림
+                        if (env.ROLLBACK_STATUS == "SUCCESS") {
+                            slackSend(
+                                color: 'warning',
+                                message: "⚠️ 배포 실패 및 롤백 완료 - ${env.JOB_NAME} #${env.BUILD_NUMBER}\n" +
+                                         "❌ 현재 빌드: 실패 (${env.HEALTH_CHECK_MESSAGE})\n" +
+                                         "✅ 롤백: 성공 (이전 버전으로 복원됨)\n" +
+                                         "🔗 상세 정보: (<${env.BUILD_URL}|빌드 결과 보기>)"
+                            )
+                        } else {
+                            slackSend(
+                                color: 'danger',
+                                message: "🚨 배포 실패 및 롤백 실패 - ${env.JOB_NAME} #${env.BUILD_NUMBER}\n" +
+                                         "❌ 현재 빌드: 실패 (${env.HEALTH_CHECK_MESSAGE})\n" +
+                                         "❌ 롤백: 실패 (수동 개입 필요)\n" +
+                                         "⚠️ 긴급: 서비스가 작동하지 않을 수 있으니 즉시 확인이 필요합니다!\n" +
+                                         "🔗 상세 정보: (<${env.BUILD_URL}|빌드 결과 보기>)"
+                            )
+                        }
+                    }
+                } else {
+                    slackSend(
+                        color: 'danger',
+                        message: "🚨 배포 실패 - ${env.JOB_NAME} #${env.BUILD_NUMBER}\n" +
+                                 "❌ 오류: ${env.HEALTH_CHECK_MESSAGE ?: '빌드 또는 배포 과정에서 실패가 발생했습니다.'}\n" +
+                                 "❌ 롤백: 불가 (이전 성공한 배포 정보 없음)\n" +
+                                 "⚠️ 조치 필요: 수동으로 이전 버전을 배포하거나 문제를 해결해야 합니다.\n" +
+                                 "🔗 상세 정보: (<${env.BUILD_URL}|빌드 결과 보기>)"
+                    )
+                }
+            }
         }
     }
 }
