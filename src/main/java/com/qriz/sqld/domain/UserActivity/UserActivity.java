@@ -1,7 +1,10 @@
 package com.qriz.sqld.domain.UserActivity;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
+import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
@@ -9,7 +12,9 @@ import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
+import javax.persistence.OneToMany;
 
+import com.qriz.sqld.domain.clip.Clipped;
 import com.qriz.sqld.domain.daily.UserDaily;
 import com.qriz.sqld.domain.exam.UserExamSession;
 import com.qriz.sqld.domain.question.Question;
@@ -89,4 +94,11 @@ public class UserActivity {
     @ManyToOne
     @JoinColumn(name = "daily_id")
     private UserDaily userDaily; // 어떤 Day의 활동인지 참조
+
+    @OneToMany(
+      mappedBy = "userActivity",
+      cascade = CascadeType.REMOVE,
+      orphanRemoval = true
+    )
+    private List<Clipped> clips = new ArrayList<>();
 }
