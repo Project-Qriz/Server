@@ -8,6 +8,7 @@ pipeline {
         ECR_REGISTRY = '314146328505.dkr.ecr.ap-northeast-2.amazonaws.com'
         AWS_CREDENTIALS = 'aws-credentials'
         PROPERTIES_FILE = 'spring-dev-properties'
+        HEALTH_CHECK_URL = 'http://dev-alb-982145495.ap-northeast-2.elb.amazonaws.com/api/health'
     }
 
     stages {
@@ -117,23 +118,100 @@ pipeline {
                 }
             }
         }
+        
+        stage('Application Health Check') {
+            steps {
+                script {
+                    // 애플리케이션이 완전히 시작될 때까지 60초 대기
+                    echo "애플리케이션 시작을 위해 60초 대기 중..."
+                    sleep(time: 60, unit: "SECONDS")
+                    
+                    // 헬스 체크 실행 및 결과 저장
+                    def healthCheckResponse = sh(
+                        script: "curl -s ${HEALTH_CHECK_URL}",
+                        returnStdout: true
+                    ).trim()
+                    
+                    // 헬스 체크 응답 코드 확인 (HTTP 상태 코드)
+                    def httpStatusCode = sh(
+                        script: "curl -s -o /dev/null -w '%{http_code}' ${HEALTH_CHECK_URL}",
+                        returnStdout: true
+                    ).trim()
+                    
+                    // 결과를 환경 변수에 저장
+                    env.HEALTH_CHECK_RESPONSE = healthCheckResponse
+                    env.HTTP_STATUS_CODE = httpStatusCode
+                    
+                    // 헬스 체크 결과 분석
+                    if (httpStatusCode == "200") {
+                        try {
+                            // JSON 응답에서 상태 확인
+                            def jsonResponse = readJSON text: healthCheckResponse
+                            
+                            if (jsonResponse.code == 1 && jsonResponse.data.status == "UP") {
+                                echo "헬스 체크 성공: 애플리케이션이 정상적으로 작동 중입니다."
+                                env.HEALTH_CHECK_STATUS = "SUCCESS"
+                                env.HEALTH_CHECK_MESSAGE = "애플리케이션이 정상적으로 작동 중입니다."
+                            } else {
+                                echo "헬스 체크 실패: 애플리케이션이 비정상 상태입니다. 상태: ${jsonResponse.data.status}"
+                                env.HEALTH_CHECK_STATUS = "FAILURE"
+                                env.HEALTH_CHECK_MESSAGE = "애플리케이션이 비정상 상태입니다. 상태: ${jsonResponse.data.status}"
+                            }
+                        } catch (Exception e) {
+                            echo "헬스 체크 응답 파싱 실패: ${e.message}"
+                            env.HEALTH_CHECK_STATUS = "FAILURE"
+                            env.HEALTH_CHECK_MESSAGE = "헬스 체크 응답 파싱 실패: ${e.message}"
+                        }
+                    } else {
+                        echo "헬스 체크 실패: HTTP 상태 코드 ${httpStatusCode}"
+                        env.HEALTH_CHECK_STATUS = "FAILURE"
+                        env.HEALTH_CHECK_MESSAGE = "헬스 체크 실패: HTTP 상태 코드 ${httpStatusCode}"
+                    }
+                }
+            }
+        }
     }
 
     post {
         success {
-            echo '도커 이미지 빌드 및 배포가 성공적으로 완료되었습니다!'
-            slackSend(
-                color: 'good',
-                message: "빌드 성공 :white_check_mark: - ${env.JOB_NAME} #${env.BUILD_NUMBER} (<${env.BUILD_URL}|상세 보기>)"
-            )
+            script {
+                if (env.HEALTH_CHECK_STATUS == "SUCCESS") {
+                    echo '도커 이미지 빌드, 배포 및 헬스 체크가 성공적으로 완료되었습니다!'
+                    slackSend(
+                        color: 'good',
+                        message: "✅ 빌드 및 배포 성공 - ${env.JOB_NAME} #${env.BUILD_NUMBER}\n" +
+                                "🔍 헬스 체크: 성공\n" +
+                                "📊 상태: 애플리케이션이 정상적으로 작동 중입니다.\n" +
+                                "🔗 상세 정보: (<${env.BUILD_URL}|빌드 결과 보기>)"
+                    )
+                } else if (env.HEALTH_CHECK_STATUS == "FAILURE") {
+                    echo '도커 이미지 빌드 및 배포는 성공했지만, 애플리케이션 헬스 체크에 실패했습니다!'
+                    slackSend(
+                        color: 'warning',
+                        message: "⚠️ 배포 경고 - ${env.JOB_NAME} #${env.BUILD_NUMBER}\n" +
+                                "✅ 빌드 및 컨테이너 배포: 성공\n" +
+                                "❌ 헬스 체크: 실패 (${env.HEALTH_CHECK_MESSAGE})\n" +
+                                "⚠️ 조치 필요: 컨테이너는 실행 중이지만 애플리케이션이 올바르게 작동하지 않을 수 있습니다.\n" +
+                                "🔗 상세 정보: (<${env.BUILD_URL}|빌드 결과 보기>)"
+                    )
+                } else {
+                    echo '도커 이미지 빌드 및 배포가 성공적으로 완료되었습니다!'
+                    slackSend(
+                        color: 'good',
+                        message: "빌드 성공 :white_check_mark: - ${env.JOB_NAME} #${env.BUILD_NUMBER} (<${env.BUILD_URL}|상세 보기>)"
+                    )
+                }
+            }
         }
         failure {
             echo '배포 중 오류가 발생했습니다.'
             slackSend(
                 color: 'danger',
-                message: "빌드 실패 :x: - ${env.JOB_NAME} #${env.BUILD_NUMBER} (<${env.BUILD_URL}|상세 보기>)"
+                message: "❌ 빌드 실패 - ${env.JOB_NAME} #${env.BUILD_NUMBER}\n" +
+                         "🚨 오류: 빌드 또는 배포 과정에서 실패가 발생했습니다.\n" +
+                         "🔗 상세 정보: (<${env.BUILD_URL}|빌드 결과 보기>)"
             )
-            // 실패 시 이전 버전으로 롤백하는 로직 추가 기능
+            // Todo: 실패 시 이전 버전으로 롤백하는 로직 
         }
     }
 }
