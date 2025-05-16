@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.qriz.sqld.domain.UserActivity.UserActivity;
 import com.qriz.sqld.domain.daily.UserDaily;
@@ -163,4 +164,11 @@ public interface ClipRepository extends JpaRepository<Clipped, Long> {
         // UserDaily의 planVersion을 기준으로 Clipped 데이터 삭제
         @Query("DELETE FROM Clipped c WHERE c.userActivity.userDaily.planVersion = :planVersion AND c.userActivity.user.id = :userId")
         void deleteByUserDailyPlanVersion(@Param("userId") Long userId, @Param("planVersion") int planVersion);
+
+        @Transactional
+        @Query("SELECT ua " +
+                        "  FROM UserActivity ua " +
+                        "  LEFT JOIN FETCH ua.clips " +
+                        " WHERE ua.user.id = :userId")
+        List<UserActivity> findByUserIdWithClips(@Param("userId") Long userId);
 }
