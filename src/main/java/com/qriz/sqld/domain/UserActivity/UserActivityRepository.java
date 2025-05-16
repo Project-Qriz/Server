@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -58,4 +59,11 @@ public interface UserActivityRepository extends JpaRepository<UserActivity, Long
 
         // 프리뷰 테스트 삭제용
         void deleteByUserIdAndTestInfo(Long userId, String testInfo);
+
+        @Transactional
+        @Query("SELECT ua " +
+                        "  FROM UserActivity ua " +
+                        "  LEFT JOIN FETCH ua.clips " +
+                        " WHERE ua.user.id = :userId")
+        List<UserActivity> findByUserIdWithClips(@Param("userId") Long userId);
 }

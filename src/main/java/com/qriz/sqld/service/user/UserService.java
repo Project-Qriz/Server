@@ -167,7 +167,7 @@ public class UserService {
         }
 
         // 1) user_activity 먼저
-        List<UserActivity> activities = userActivityRepository.findByUserId(userId);
+        List<UserActivity> activities = userActivityRepository.findByUserIdWithClips(userId);
         userActivityRepository.deleteAll(activities);
 
         List<UserDaily> dailies = userDailyRepository.findByUser(user);
