@@ -41,6 +41,7 @@ public interface UserActivityRepository extends JpaRepository<UserActivity, Long
         List<UserActivity> findByUserIdAndTestInfoAndDateAfter(Long userId, String testInfo, LocalDateTime date);
 
         @Modifying
+        @Transactional
         @Query("DELETE FROM UserActivity ua WHERE ua.user = :user")
         void deleteByUser(@Param("user") User user);
 
@@ -55,9 +56,13 @@ public interface UserActivityRepository extends JpaRepository<UserActivity, Long
 
         List<UserActivity> findByExamSession(UserExamSession examSession);
 
+        @Modifying
+        @Transactional
         void deleteByExamSession(UserExamSession examSession);
 
         // 프리뷰 테스트 삭제용
+        @Modifying
+        @Transactional
         void deleteByUserIdAndTestInfo(Long userId, String testInfo);
 
         @Transactional
