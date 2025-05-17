@@ -257,32 +257,40 @@ public class PreviewService {
     }
 
     private int calculateEstimatedScore(List<UserActivity> activities) {
+        // 1) static 중요도 가중치 맵
         Map<String, Double> weights = getWeights();
-        Map<String, Integer> correctAnswers = new HashMap<>();
-        Map<String, Integer> totalQuestions = new HashMap<>();
 
-        for (UserActivity activity : activities) {
-            String topic = activity.getQuestion().getSkill().getKeyConcepts();
-            totalQuestions.put(topic, totalQuestions.getOrDefault(topic, 0) + 1);
-            if (activity.isCorrection()) {
-                correctAnswers.put(topic, correctAnswers.getOrDefault(topic, 0) + 1);
-            }
-        }
+        // 2) 토픽별 총 문항 수·정답 수 집계
+        Map<String, Long> totalByTopic = activities.stream()
+                .collect(Collectors.groupingBy(
+                        a -> a.getQuestion().getSkill().getKeyConcepts(),
+                        Collectors.counting()));
+        Map<String, Long> correctByTopic = activities.stream()
+                .filter(UserActivity::isCorrection)
+                .collect(Collectors.groupingBy(
+                        a -> a.getQuestion().getSkill().getKeyConcepts(),
+                        Collectors.counting()));
 
-        double weightedScore = 0;
-        for (Map.Entry<String, Double> entry : weights.entrySet()) {
-            String topic = entry.getKey();
-            double weight = entry.getValue();
-            int correct = correctAnswers.getOrDefault(topic, 0);
-            int total = totalQuestions.getOrDefault(topic, 0);
+        // 3) 출제된 토픽에 해당하는 가중치만 뽑아서 합계 계산
+        double sumWeights = totalByTopic.keySet().stream()
+                .mapToDouble(topic -> weights.getOrDefault(topic, 0.0))
+                .sum();
 
-            if (total > 0) {
-                weightedScore += (correct / (double) total) * weight;
-            }
-        }
+        // 4) 가중합 계산
+        double weightedSum = totalByTopic.entrySet().stream()
+                .mapToDouble(e -> {
+                    String topic = e.getKey();
+                    long total = e.getValue();
+                    long correct = correctByTopic.getOrDefault(topic, 0L);
+                    double accuracy = (total > 0) ? correct / (double) total : 0;
+                    double w = weights.getOrDefault(topic, 0.0);
+                    return accuracy * w;
+                })
+                .sum();
 
-        // 100점 만점으로 환산하고 반올림하여 정수로 변환
-        return (int) Math.round(weightedScore * 100);
+        // 5) 출제된 토픽 비율로 정규화 후 100점 환산
+        double normalized = (sumWeights > 0) ? (weightedSum / sumWeights) : 0;
+        return (int) Math.round(normalized * 100);
     }
 
     private Map<String, Double> getWeights() {
