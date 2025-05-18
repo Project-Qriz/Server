@@ -76,23 +76,25 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
 
         LoginUser loginUser = (LoginUser) authResult.getPrincipal();
 
-        // Access Token 생성
+        // 1) Access Token 생성 (prefix 포함)
         String accessToken = JwtProcess.createAccessToken(loginUser);
 
-        // Refresh Token 생성
-        String refreshToken = JwtProcess.createRefreshToken(loginUser);
+        // 2) Refresh Token 생성 후 prefix 제거하고 raw 토큰만 DB에 저장
+        String rawRefreshToken = JwtProcess.createRefreshToken(loginUser)
+                .substring(JwtVO.TOKEN_PREFIX.length());
 
-        // Refresh Token DB 저장
         RefreshToken refreshTokenEntity = new RefreshToken(
                 loginUser.getUser().getId(),
-                refreshToken,
+                rawRefreshToken,
                 LocalDateTime.now().plusSeconds(JwtVO.REFRESH_TOKEN_EXPIRATION_TIME));
         refreshTokenRepository.save(refreshTokenEntity);
 
-        // Access Token만 응답 헤더에 추가
-        response.addHeader(JwtVO.HEADER, accessToken);
+        // 3) 클라이언트 응답 헤더에 토큰들 추가
+        response.addHeader(JwtVO.HEADER, accessToken); // Authorization: Bearer <access>
 
+        // 4) body에 사용자 정보 담아 주기
         UserRespDto.LoginRespDto loginRespDto = new UserRespDto.LoginRespDto(loginUser.getUser());
         CustomResponseUtil.success(response, loginRespDto);
     }
+
 }
