@@ -75,8 +75,8 @@ public class ApplicationRespDto {
         private String examDate;
 
         public AppliedRespDto(Application application) {
-            DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MM.dd(E)");
-            DateTimeFormatter testDateFormatter = DateTimeFormatter.ofPattern("M월 d일(E)");
+            DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MM.dd(E)", Locale.KOREAN);
+            DateTimeFormatter testDateFormatter = DateTimeFormatter.ofPattern("M월 d일(E)", Locale.KOREAN);
 
             this.examName = application.getExamName();
             // 접수 기간 포맷 수정
