@@ -34,6 +34,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -113,6 +114,7 @@ public class PreviewService {
         int rem = totalQuestions % skillIds.size();
         List<Question> result = new ArrayList<>();
 
+        // 1) Concept별 quota만큼 뽑기
         for (Long sid : skillIds) {
             int quota = base + (rem-- > 0 ? 1 : 0);
             if (quota <= 0)
@@ -133,13 +135,43 @@ public class PreviewService {
                     .getContent());
         }
 
+        // 2) 부족분 보충 — 먼저 중복 없이 RAND() 보충
         int need = totalQuestions - result.size();
         if (need > 0) {
-            result.addAll(getRandomQuestions(skillIds, category, need));
+            List<Long> pickedIds = result.stream()
+                    .map(Question::getId)
+                    .collect(Collectors.toList());
+            List<Question> extras = questionRepository
+                    .findRandomQuestionsBySkillIdsAndCategoryExcluding(
+                            skillIds, category, pickedIds, need);
+            result.addAll(extras);
         }
 
-        Collections.shuffle(result);
-        return result.subList(0, totalQuestions);
+        // 3) ID 기준 최종 중복 제거
+        Map<Long, Question> dedup = new LinkedHashMap<>();
+        for (Question q : result) {
+            dedup.putIfAbsent(q.getId(), q);
+        }
+        List<Question> uniqueList = new ArrayList<>(dedup.values());
+
+        // 4) 여전히 부족하면, frequency 순 보충
+        int stillNeed = totalQuestions - uniqueList.size();
+        if (stillNeed > 0) {
+            List<Long> excludeIds = uniqueList.stream()
+                    .map(Question::getId)
+                    .collect(Collectors.toList());
+            List<Question> more = questionRepository
+                    .findRandomQuestionsBySkillIdsAndCategoryExcludingOrderByFreq(
+                            skillIds, category, excludeIds, stillNeed);
+            uniqueList.addAll(more);
+        }
+
+        // 5) Shuffle & 안전하게 자르기
+        Collections.shuffle(uniqueList);
+        if (uniqueList.size() > totalQuestions) {
+            return uniqueList.subList(0, totalQuestions);
+        }
+        return uniqueList;
     }
 
     @Transactional

@@ -113,4 +113,35 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
                         List<Long> skillIds,
                         int category,
                         Pageable pageable);
+
+        /**
+         * 중복 배제를 위해 excludeIds를 받아서 랜덤 질문 조회
+         */
+        @Query(value = ""
+                        + "SELECT * FROM question q "
+                        + "WHERE q.skill_id IN (:skillIds) "
+                        + "  AND q.category = :category "
+                        + "  AND q.question_id NOT IN (:excludeIds) "
+                        + "ORDER BY RAND() "
+                        + "LIMIT :limit", nativeQuery = true)
+        List<Question> findRandomQuestionsBySkillIdsAndCategoryExcluding(
+                        @Param("skillIds") List<Long> skillIds,
+                        @Param("category") int category,
+                        @Param("excludeIds") List<Long> excludeIds,
+                        @Param("limit") int limit);
+
+        // 새 메서드: frequency 내림차순 + 랜덤
+        @Query(value = ""
+                        + "SELECT q.* FROM question q "
+                        + "  JOIN skill s ON q.skill_id = s.skill_id "
+                        + "WHERE q.skill_id IN (:skillIds) "
+                        + "  AND q.category = :category "
+                        + "  AND q.question_id NOT IN (:excludeIds) "
+                        + "ORDER BY s.frequency DESC, RAND() "
+                        + "LIMIT :limit", nativeQuery = true)
+        List<Question> findRandomQuestionsBySkillIdsAndCategoryExcludingOrderByFreq(
+                        @Param("skillIds") List<Long> skillIds,
+                        @Param("category") int category,
+                        @Param("excludeIds") List<Long> excludeIds,
+                        @Param("limit") int limit);
 }
