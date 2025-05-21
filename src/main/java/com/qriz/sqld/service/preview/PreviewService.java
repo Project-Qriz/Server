@@ -109,13 +109,13 @@ public class PreviewService {
                 .getContent();
     }
 
-    private List<Question> getStratifiedRandomQuestions(List<Long> skillIds, int category, int totalQuestions) {
-        int base = totalQuestions / skillIds.size();
-        int rem = totalQuestions % skillIds.size();
+    private List<Question> getStratifiedRandomQuestions(List<Long> selectedSkillIds, int category, int totalQuestions) {
+        int base = totalQuestions / selectedSkillIds.size();
+        int rem = totalQuestions % selectedSkillIds.size();
         List<Question> result = new ArrayList<>();
 
-        // 1) Concept별 quota만큼 뽑기
-        for (Long sid : skillIds) {
+        // 1) 설문 선택된 개념별 quota 만큼 뽑기
+        for (Long sid : selectedSkillIds) {
             int quota = base + (rem-- > 0 ? 1 : 0);
             if (quota <= 0)
                 continue;
@@ -129,21 +129,21 @@ public class PreviewService {
             int page = new Random().nextInt(pages);
             PageRequest pr = PageRequest.of(page, quota);
 
-            result.addAll(questionRepository
-                    .findBySkillIdInAndCategory(
-                            Collections.singletonList(sid), category, pr)
-                    .getContent());
+            result.addAll(
+                    questionRepository.findBySkillIdInAndCategory(
+                            Collections.singletonList(sid), category, pr).getContent());
         }
 
-        // 2) 부족분 보충 — 먼저 중복 없이 RAND() 보충
+        // 2) 부족분 1차 보충 — 중복 없이 RAND()
         int need = totalQuestions - result.size();
         if (need > 0) {
-            List<Long> pickedIds = result.stream()
+            List<Long> excludeIds = result.stream()
                     .map(Question::getId)
                     .collect(Collectors.toList());
+
             List<Question> extras = questionRepository
                     .findRandomQuestionsBySkillIdsAndCategoryExcluding(
-                            skillIds, category, pickedIds, need);
+                            selectedSkillIds, category, excludeIds, need);
             result.addAll(extras);
         }
 
@@ -154,15 +154,17 @@ public class PreviewService {
         }
         List<Question> uniqueList = new ArrayList<>(dedup.values());
 
-        // 4) 여전히 부족하면, frequency 순 보충
+        // 4) 여전히 부족하면 전체 개념 대상 frequency 순 보충
         int stillNeed = totalQuestions - uniqueList.size();
         if (stillNeed > 0) {
             List<Long> excludeIds = uniqueList.stream()
                     .map(Question::getId)
                     .collect(Collectors.toList());
+            List<Long> allSkillIds = questionRepository.findAllSkillIds();
+
             List<Question> more = questionRepository
                     .findRandomQuestionsBySkillIdsAndCategoryExcludingOrderByFreq(
-                            skillIds, category, excludeIds, stillNeed);
+                            allSkillIds, category, excludeIds, stillNeed);
             uniqueList.addAll(more);
         }
 
