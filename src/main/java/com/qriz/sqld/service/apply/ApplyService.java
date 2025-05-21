@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -84,7 +85,7 @@ public class ApplyService {
                 userApplyRepository.save(userApply);
 
                 // 5. 응답 데이터 생성
-                DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MM-dd");
+                DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MM-dd", Locale.KOREAN);
                 String period = formatPeriod(application.getStartDate(), application.getEndDate());
 
                 return new ApplicationRespDto.ApplyRespDto(
@@ -128,7 +129,7 @@ public class ApplyService {
         }
 
         private String formatPeriod(LocalDate startDate, LocalDate endDate) {
-                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM.dd(E)");
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM.dd(E)", Locale.KOREAN);
                 return startDate.format(formatter) + " ~ " + endDate.format(formatter);
         }
 
@@ -158,7 +159,7 @@ public class ApplyService {
                 userApplyRepository.save(ua); // Update
 
                 // 5. 응답 데이터 생성
-                DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MM-dd");
+                DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MM-dd", Locale.KOREAN);
                 String period = formatPeriod(newApp.getStartDate(), newApp.getEndDate());
 
                 return new ApplicationRespDto.ApplyRespDto(
