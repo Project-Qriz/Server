@@ -5,10 +5,12 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -173,19 +175,35 @@ public class ExamService {
          */
         private Map<String, Double> calculateSubjectScores(List<ExamReqDto.ExamSubmitReqDto> activities) {
                 Map<String, Double> subjectScores = new HashMap<>();
+
                 for (ExamReqDto.ExamSubmitReqDto activity : activities) {
-                        Question question = questionRepository.findById(activity.getQuestion().getQuestionId())
+                        // 1) nullable Long으로 optionId 받기
+                        Long optionId = activity.getOptionId();
+
+                        // 2) 기본 점수는 0점
+                        double score = 0.0;
+
+                        if (optionId != null) {
+                                // 3) optionId가 있을 때만 조회
+                                Option submittedOption = optionRepository.findById(optionId)
+                                                .orElseThrow(() -> new CustomApiException("선택한 옵션을 찾을 수 없습니다."));
+
+                                // 4) 정답이면 2점
+                                if (submittedOption.isAnswer()) {
+                                        score = 2.0;
+                                }
+                        }
+
+                        // 5) 해당 문제의 과목명(예: "1과목" 또는 "2과목") 가져오기
+                        Question question = questionRepository.findById(
+                                        activity.getQuestion().getQuestionId())
                                         .orElseThrow(() -> new CustomApiException("문제를 찾을 수 없습니다."));
+                        String title = question.getSkill().getTitle();
 
-                        // Option PK로 Option 엔티티 조회
-                        Option submittedOption = optionRepository.findById((long) activity.getOptionId())
-                                        .orElseThrow(() -> new CustomApiException("선택한 옵션을 찾을 수 없습니다."));
-
-                        boolean isCorrect = submittedOption.isAnswer();
-                        double score = isCorrect ? 2.0 : 0.0;
-                        String title = question.getSkill().getTitle(); // "1과목" 또는 "2과목"
+                        // 6) 과목별 점수 누적
                         subjectScores.merge(title, score, Double::sum);
                 }
+
                 return subjectScores;
         }
 
@@ -358,76 +376,90 @@ public class ExamService {
 
         @Transactional(readOnly = true)
         public ExamTestResult.SubjectDetails getSubjectScoreDetails(Long userId, Long examId, String subject) {
+                // session 문자열은 "<examId>회차" 형식으로 저장
                 String session = examId + "회차";
 
-                // 영어 subject를 한글 과목명("1과목", "2과목")으로 매핑
-                String mappedSubject = mapSubject(subject);
-
-                List<UserExamSession> userExamSessions = userExamSessionRepository
-                                .findByUserIdAndSessionOrderByCompletionDateDesc(userId, session);
-                if (userExamSessions.isEmpty()) {
-                        throw new CustomApiException("No exam session found for the given session.");
+                // 영어 파라미터(subject1, subject2) → 한글 과목명("1과목", "2과목") 매핑
+                String mappedSubject;
+                if ("subject1".equalsIgnoreCase(subject)) {
+                        mappedSubject = "1과목";
+                } else if ("subject2".equalsIgnoreCase(subject)) {
+                        mappedSubject = "2과목";
+                } else {
+                        throw new CustomApiException("Unsupported subject: " + subject);
                 }
-                UserExamSession latestSession = userExamSessions.get(0);
 
-                // 과목별 주요 항목 및 세부 항목 목록 미리 정의
+                // 해당 사용자·세션 중 최신 데이터 조회
+                List<UserExamSession> sessions = userExamSessionRepository
+                                .findByUserIdAndSessionOrderByCompletionDateDesc(userId, session);
+                if (sessions.isEmpty()) {
+                        throw new CustomApiException("No exam session found for session: " + session);
+                }
+                UserExamSession latest = sessions.get(0);
+
+                // 주요 항목별 세부 항목 이름 미리 정의
                 Map<String, List<String>> majorAndSubItems = new HashMap<>();
                 if ("1과목".equals(mappedSubject)) {
                         majorAndSubItems.put("데이터 모델링의 이해",
                                         List.of("데이터모델의 이해", "엔터티", "속성", "관계", "식별자"));
                         majorAndSubItems.put("데이터 모델과 SQL",
                                         List.of("정규화", "관계와 조인의 이해", "모델이 표현하는 트랜잭션의 이해", "NULL 속성의 이해",
-                                                        "본질식별자 vs 인조 식별자"));
-                } else if ("2과목".equals(mappedSubject)) {
+                                                        "본질 식별자 vs 인조 식별자"));
+                } else {
                         majorAndSubItems.put("SQL 기본",
-                                        List.of("관계형 데이터베이스 개요", "SELECT 문", "함수", "WHERE 절", "GROUP BY, HAVING 절",
+                                        List.of("관계형 데이터 베이스 개요", "SELECT 문", "함수", "WHERE 절", "GROUP BY, HAVING 절",
                                                         "ORDER BY 절", "조인", "표준 조인"));
                         majorAndSubItems.put("SQL 활용",
-                                        List.of("서브 쿼리", "집합 연산자", "그룹 함수", "윈도우 함수", "TOP N 쿼리", "계층형 질의와 셀프 조인",
-                                                        "PIVOI 절과 UNPIVOT 절", "정규 표현식"));
-                        majorAndSubItems.put("관리 구문",
+                                        List.of("서브 쿼리", "집합 연산자", "그룹 함수", "윈도우 함수", "Top N 쿼리", "계층형 질의와 셀프 조인",
+                                                        "PIVOT 절과 UNPIVOT 절", "정규 표현식"));
+                        majorAndSubItems.put("관리구문",
                                         List.of("DML", "TCL", "DDL", "DCL"));
-                } else {
-                        throw new CustomApiException("Unsupported subject: " + mappedSubject);
                 }
 
-                // SubjectDetails 초기화 (빈 MajorItemDetail 목록으로)
-                ExamTestResult.SubjectDetails subjectDetails = new ExamTestResult.SubjectDetails(mappedSubject);
-                // 각 주요 항목을 초기 0점과 해당 세부 항목 목록으로 생성
-                for (Map.Entry<String, List<String>> entry : majorAndSubItems.entrySet()) {
-                        String majorItem = entry.getKey();
-                        List<ExamTestResult.SubItemScore> subItemScoreList = new ArrayList<>();
-                        for (String subItem : entry.getValue()) {
-                                subItemScoreList.add(new ExamTestResult.SubItemScore(subItem, 0.0));
+                // DTO 초기화: title과 0점으로 시작
+                ExamTestResult.SubjectDetails details = new ExamTestResult.SubjectDetails(mappedSubject);
+                for (var entry : majorAndSubItems.entrySet()) {
+                        List<ExamTestResult.SubItemScore> subScores = new ArrayList<>();
+                        for (String sub : entry.getValue()) {
+                                subScores.add(new ExamTestResult.SubItemScore(sub, 0.0));
                         }
-                        subjectDetails.getMajorItems()
-                                        .add(new ExamTestResult.MajorItemDetail(majorItem, 0.0, subItemScoreList));
+                        details.getMajorItems().add(
+                                        new ExamTestResult.MajorItemDetail(entry.getKey(), 0.0, subScores));
                 }
 
-                // 최신 세션의 활동(Activity) 조회 후, 점수 누적
-                List<UserActivity> latestActivities = userActivityRepository.findByExamSession(latestSession);
-                for (UserActivity activity : latestActivities) {
-                        // 과목이 일치하는 활동만 처리
-                        if (mappedSubject.equals(activity.getQuestion().getSkill().getTitle())) {
-                                // 활동에서 주요 항목은 skill.getType(), 세부 항목은 skill.getSubType()로 가정
-                                String majorItem = activity.getQuestion().getSkill().getType();
-                                String subItem = activity.getQuestion().getSkill().getKeyConcepts();
-                                if (majorAndSubItems.containsKey(majorItem)) {
-                                        // 주요 항목 점수 누적
-                                        subjectDetails.addMajorItemScore(majorItem, activity.getScore());
-                                        // 해당 주요 항목의 세부 항목 점수 누적
-                                        for (ExamTestResult.MajorItemDetail mid : subjectDetails.getMajorItems()) {
-                                                if (mid.getMajorItem().equals(majorItem)) {
-                                                        mid.addSubItemScore(subItem, activity.getScore());
-                                                        break;
-                                                }
+                // 사용자 활동(문제별 정답/오답 기록) 조회 후 점수 반영
+                List<UserActivity> activities = userActivityRepository.findByExamSession(latest);
+                for (UserActivity act : activities) {
+                        if (!mappedSubject.equals(act.getQuestion().getSkill().getTitle()))
+                                continue;
+
+                        String major = act.getQuestion().getSkill().getType();
+                        String sub = act.getQuestion().getSkill().getKeyConcepts();
+                        double score = act.getScore();
+
+                        if (majorAndSubItems.containsKey(major)) {
+                                details.addMajorItemScore(major, score);
+                                for (var mid : details.getMajorItems()) {
+                                        if (mid.getMajorItem().equals(major)) {
+                                                mid.addSubItemScore(sub, score);
+                                                break;
                                         }
                                 }
                         }
                 }
 
-                subjectDetails.adjustTotalScore();
-                return subjectDetails;
+                for (Iterator<ExamTestResult.MajorItemDetail> it = details.getMajorItems().iterator(); it.hasNext();) {
+                        var mid = it.next();
+                        mid.getSubItemScores().removeIf(subItemScore -> subItemScore.getScore() == 0.0);
+                        // 2) 만약 남은 서브아이템이 하나도 없으면, 해당 메이저아이템도 제거
+                        if (mid.getSubItemScores().isEmpty()) {
+                                it.remove();
+                        }
+                }
+
+                // 총점이 100 초과 시 비율 조정
+                details.adjustTotalScore();
+                return details;
         }
 
         @Transactional(readOnly = true)
@@ -478,37 +510,44 @@ public class ExamService {
                 List<String> allSessions = questionRepository.findDistinctExamSessionByCategory(3);
                 List<UserExamSession> userSessions = userExamSessionRepository
                                 .findByUserIdOrderByCompletionDateDesc(userId);
+
                 Map<String, UserExamSession> completedSessionsMap = userSessions.stream()
                                 .collect(Collectors.toMap(
                                                 UserExamSession::getSession,
-                                                session -> session,
-                                                (existing, replacement) -> existing));
+                                                Function.identity(),
+                                                (oldOne, newOne) -> oldOne));
 
                 Stream<ExamRespDto.SessionList> sessionStream = allSessions.stream()
-                                .map(session -> {
-                                        UserExamSession userSession = completedSessionsMap.get(session);
-                                        boolean completed = userSession != null;
-                                        String totalScore = null;
+                                .map(sessionName -> {
+                                        Long examId = Long.parseLong(sessionName.replaceAll("\\D+", ""));
+                                        UserExamSession ues = completedSessionsMap.get(sessionName);
+                                        boolean completed = (ues != null);
+                                        Double totalScore = null;
+
                                         if (completed) {
-                                                double score = userSession.getSubject1Score()
-                                                                + userSession.getSubject2Score();
-                                                totalScore = String.format("%.1f", score);
+                                                // 기존: double score = ues.getSubject1Score() + ues.getSubject2Score();
+                                                // 변경:
+                                                ExamTestResult.SubjectDetails d1 = getSubjectScoreDetails(userId,
+                                                                examId, "subject1");
+                                                ExamTestResult.SubjectDetails d2 = getSubjectScoreDetails(userId,
+                                                                examId, "subject2");
+                                                totalScore = d1.getTotalScore() + d2.getTotalScore();
                                         }
-                                        return new ExamRespDto.SessionList(completed, session, totalScore);
+
+                                        return new ExamRespDto.SessionList(
+                                                        completed,
+                                                        examId,
+                                                        sessionName,
+                                                        totalScore);
                                 });
 
-                if ("completed".equals(status)) {
-                        sessionStream = sessionStream.filter(ExamRespDto.SessionList::isCompleted);
-                } else if ("incomplete".equals(status)) {
-                        sessionStream = sessionStream.filter(session -> !session.isCompleted());
-                }
-
                 Comparator<ExamRespDto.SessionList> comparator = Comparator.comparing(
-                                session -> Integer.parseInt(session.getSession().split("회차")[0]));
-                if ("desc".equals(sort)) {
+                                sl -> Long.parseLong(sl.getSession().replaceAll("\\D+", "")));
+                if ("desc".equals(sort))
                         comparator = comparator.reversed();
-                }
 
-                return sessionStream.sorted(comparator).collect(Collectors.toList());
+                return sessionStream
+                                .sorted(comparator)
+                                .collect(Collectors.toList());
         }
 }
