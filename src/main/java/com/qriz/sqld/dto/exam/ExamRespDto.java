@@ -4,12 +4,13 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 public class ExamRespDto {
-    
+
     @Getter
     @AllArgsConstructor
     public static class SessionList {
         private boolean completed;
+        private Long examId;
         private String session;
-        private String totalScore;
+        private Double totalScore;
     }
 }
