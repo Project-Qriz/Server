@@ -20,27 +20,57 @@ import com.qriz.sqld.domain.user.UserEnum;
 public class JwtProcess {
     private static final Logger log = LoggerFactory.getLogger(JwtProcess.class);
 
-    public static String createAccessToken(LoginUser loginUser) {
-        String jwtToken = JWT.create()
+    // public static String createAccessToken(LoginUser loginUser) {
+    // String jwtToken = JWT.create()
+    // .withSubject("access_token")
+    // .withExpiresAt(new Date(System.currentTimeMillis() +
+    // JwtVO.ACCESS_TOKEN_EXPIRATION_TIME * 1000L))
+    // .withClaim("id", loginUser.getUser().getId())
+    // .withClaim("role", loginUser.getUser().getRole() + "")
+    // .withClaim("previewStatus",
+    // loginUser.getUser().getPreviewTestStatus() != null
+    // ? loginUser.getUser().getPreviewTestStatus().name()
+    // : PreviewTestStatus.NOT_STARTED.name())
+    // .sign(Algorithm.HMAC512(JwtVO.SECRET));
+    // return JwtVO.TOKEN_PREFIX + jwtToken;
+    // }
+
+    // public static String createRefreshToken(LoginUser loginUser) {
+    // String jwtToken = JWT.create()
+    // .withSubject("refresh_token")
+    // .withExpiresAt(new Date(System.currentTimeMillis() +
+    // JwtVO.REFRESH_TOKEN_EXPIRATION_TIME * 1000L))
+    // .withClaim("id", loginUser.getUser().getId())
+    // .sign(Algorithm.HMAC512(JwtVO.SECRET));
+    // return JwtVO.TOKEN_PREFIX + jwtToken;
+    // }
+
+    public static String createAccessToken(LoginUser loginUser, long expirationMillis) {
+        String jwt = JWT.create()
                 .withSubject("access_token")
-                .withExpiresAt(new Date(System.currentTimeMillis() + JwtVO.ACCESS_TOKEN_EXPIRATION_TIME * 1000L))
+                .withExpiresAt(new Date(System.currentTimeMillis() + expirationMillis))
                 .withClaim("id", loginUser.getUser().getId())
-                .withClaim("role", loginUser.getUser().getRole() + "")
-                .withClaim("previewStatus",
-                        loginUser.getUser().getPreviewTestStatus() != null
-                                ? loginUser.getUser().getPreviewTestStatus().name()
-                                : PreviewTestStatus.NOT_STARTED.name())
+                .withClaim("role", loginUser.getUser().getRole().name())
+                .withClaim("previewStatus", loginUser.getUser().getPreviewTestStatus().name())
                 .sign(Algorithm.HMAC512(JwtVO.SECRET));
-        return JwtVO.TOKEN_PREFIX + jwtToken;
+        return JwtVO.TOKEN_PREFIX + jwt;
+    }
+
+    public static String createAccessToken(LoginUser loginUser) {
+        return createAccessToken(loginUser, JwtVO.ACCESS_TOKEN_EXPIRATION_TIME);
+    }
+
+    public static String createRefreshToken(LoginUser loginUser, long expirationMillis) {
+        String jwt = JWT.create()
+                .withSubject("refresh_token")
+                .withExpiresAt(new Date(System.currentTimeMillis() + expirationMillis))
+                .withClaim("id", loginUser.getUser().getId())
+                .sign(Algorithm.HMAC512(JwtVO.SECRET));
+        return JwtVO.TOKEN_PREFIX + jwt;
     }
 
     public static String createRefreshToken(LoginUser loginUser) {
-        String jwtToken = JWT.create()
-                .withSubject("refresh_token")
-                .withExpiresAt(new Date(System.currentTimeMillis() + JwtVO.REFRESH_TOKEN_EXPIRATION_TIME * 1000L))
-                .withClaim("id", loginUser.getUser().getId())
-                .sign(Algorithm.HMAC512(JwtVO.SECRET));
-        return JwtVO.TOKEN_PREFIX + jwtToken;
+        return createRefreshToken(loginUser, JwtVO.REFRESH_TOKEN_EXPIRATION_TIME);
     }
 
     public static LoginUser verify(String token) {

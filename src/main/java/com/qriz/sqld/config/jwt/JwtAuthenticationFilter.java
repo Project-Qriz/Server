@@ -1,6 +1,7 @@
 package com.qriz.sqld.config.jwt;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.time.LocalDateTime;
 
 import javax.servlet.FilterChain;
@@ -67,34 +68,73 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
     }
 
     // return authentication 잘 작동하면 successfulAuthentication 메서드 호출
+    // @Override
+    // protected void successfulAuthentication(HttpServletRequest request,
+    // HttpServletResponse response,
+    // FilterChain chain,
+    // Authentication authResult) throws IOException, ServletException {
+    // log.debug("디버그 : successfulAuthentication 호출됨");
+
+    // LoginUser loginUser = (LoginUser) authResult.getPrincipal();
+
+    // // 1) Access Token 생성 (prefix 포함)
+    // String accessToken = JwtProcess.createAccessToken(loginUser);
+
+    // // 2) Refresh Token 생성 후 prefix 제거하고 raw 토큰만 DB에 저장
+    // String rawRefreshToken = JwtProcess.createRefreshToken(loginUser)
+    // .substring(JwtVO.TOKEN_PREFIX.length());
+
+    // RefreshToken refreshTokenEntity = new RefreshToken(
+    // loginUser.getUser().getId(),
+    // rawRefreshToken,
+    // LocalDateTime.now().plusSeconds(JwtVO.REFRESH_TOKEN_EXPIRATION_TIME));
+    // refreshTokenRepository.save(refreshTokenEntity);
+
+    // // 3) 클라이언트 응답 헤더에 토큰들 추가
+    // response.addHeader(JwtVO.HEADER, accessToken); // Authorization: Bearer
+    // <access>
+
+    // // 4) body에 사용자 정보 담아 주기
+    // UserRespDto.LoginRespDto loginRespDto = new
+    // UserRespDto.LoginRespDto(loginUser.getUser());
+    // CustomResponseUtil.success(response, loginRespDto);
+    // }
+
     @Override
     protected void successfulAuthentication(HttpServletRequest request,
             HttpServletResponse response,
             FilterChain chain,
-            Authentication authResult) throws IOException, ServletException {
-        log.debug("디버그 : successfulAuthentication 호출됨");
-
+            Authentication authResult) throws IOException {
         LoginUser loginUser = (LoginUser) authResult.getPrincipal();
 
-        // 1) Access Token 생성 (prefix 포함)
-        String accessToken = JwtProcess.createAccessToken(loginUser);
+        // 기본 만료시간(ms)
+        long accessExp = JwtVO.ACCESS_TOKEN_EXPIRATION_TIME;
+        long refreshExp = JwtVO.REFRESH_TOKEN_EXPIRATION_TIME;
 
-        // 2) Refresh Token 생성 후 prefix 제거하고 raw 토큰만 DB에 저장
-        String rawRefreshToken = JwtProcess.createRefreshToken(loginUser)
+        // test1234 사용자에 대해 override
+        if ("test1234".equals(loginUser.getUser().getUsername())) {
+            accessExp = 1000L * 60 * 3; // 3분
+            refreshExp = 1000L * 60 * 5; // 5분
+        }
+
+        // 1) Access Token 생성 & 헤더 추가
+        String accessToken = JwtProcess.createAccessToken(loginUser, accessExp);
+        response.addHeader(JwtVO.HEADER, accessToken);
+
+        // 2) Refresh Token 생성 (prefix 제거) & DB 저장
+        String rawRefresh = JwtProcess.createRefreshToken(loginUser, refreshExp)
                 .substring(JwtVO.TOKEN_PREFIX.length());
-
-        RefreshToken refreshTokenEntity = new RefreshToken(
+        LocalDateTime expireAt = LocalDateTime.now()
+                .plus(Duration.ofMillis(refreshExp));
+        RefreshToken tokenEntity = new RefreshToken(
                 loginUser.getUser().getId(),
-                rawRefreshToken,
-                LocalDateTime.now().plusSeconds(JwtVO.REFRESH_TOKEN_EXPIRATION_TIME));
-        refreshTokenRepository.save(refreshTokenEntity);
+                rawRefresh,
+                expireAt);
+        refreshTokenRepository.save(tokenEntity);
 
-        // 3) 클라이언트 응답 헤더에 토큰들 추가
-        response.addHeader(JwtVO.HEADER, accessToken); // Authorization: Bearer <access>
-
-        // 4) body에 사용자 정보 담아 주기
-        UserRespDto.LoginRespDto loginRespDto = new UserRespDto.LoginRespDto(loginUser.getUser());
-        CustomResponseUtil.success(response, loginRespDto);
+        // 3) 로그인 응답 body
+        UserRespDto.LoginRespDto dto = new UserRespDto.LoginRespDto(loginUser.getUser());
+        CustomResponseUtil.success(response, dto);
     }
 
 }
