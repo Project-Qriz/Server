@@ -5,6 +5,7 @@ import com.qriz.sqld.config.jwt.JwtAuthenticationFilter;
 import com.qriz.sqld.config.jwt.JwtAuthorizationFilter;
 import com.qriz.sqld.config.jwt.JwtVO;
 import com.qriz.sqld.domain.user.UserEnum;
+import com.qriz.sqld.domain.user.UserRepository;
 import com.qriz.sqld.util.CustomResponseUtil;
 
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.oauth2.client.endpoint.DefaultAuthorizationCodeTokenResponseClient;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -32,6 +34,7 @@ public class SecurityConfig {
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final RefreshTokenRepository refreshTokenRepository;
+    private final UserRepository userRepository;
 
     @Bean
     public BCryptPasswordEncoder passwordEncoder() {
@@ -45,21 +48,27 @@ public class SecurityConfig {
     }
 
     // JWT 필터 등록
-    public class CustomSecurityFilterManager extends AbstractHttpConfigurer<CustomSecurityFilterManager, HttpSecurity> {
+    public class CustomSecurityFilterManager
+            extends AbstractHttpConfigurer<CustomSecurityFilterManager, HttpSecurity> {
 
         @Override
-        public void configure(HttpSecurity builder) throws Exception {
-            AuthenticationManager authenticationManager = builder.getSharedObject(AuthenticationManager.class);
+        public void configure(HttpSecurity http) throws Exception {
+            AuthenticationManager authManager = http.getSharedObject(AuthenticationManager.class);
 
-            // 필터 생성 시 refreshTokenRepository 주입
-            JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(authenticationManager,
-                    refreshTokenRepository);
+            // 1) 로그인 처리용 필터를 UsernamePasswordAuthenticationFilter 위치에 삽입
+            JwtAuthenticationFilter authFilter = new JwtAuthenticationFilter(authManager, refreshTokenRepository);
+            http.addFilterAt(
+                    authFilter,
+                    UsernamePasswordAuthenticationFilter.class);
 
-            builder.addFilter(jwtAuthenticationFilter);
-            builder.addFilter(new JwtAuthorizationFilter(authenticationManager, refreshTokenRepository));
-            super.configure(builder);
+            // 2) 토큰 검증용 필터를 UsernamePasswordAuthenticationFilter 앞에 삽입
+            JwtAuthorizationFilter authorizationFilter = new JwtAuthorizationFilter(authManager,
+                    refreshTokenRepository,
+                    userRepository);
+            http.addFilterBefore(
+                    authorizationFilter,
+                    UsernamePasswordAuthenticationFilter.class);
         }
-
     }
 
     @Bean

@@ -3,6 +3,8 @@ package com.qriz.sqld.config.jwt;
 import com.qriz.sqld.config.auth.LoginUser;
 import com.qriz.sqld.config.auth.RefreshToken;
 import com.qriz.sqld.config.auth.RefreshTokenRepository;
+import com.qriz.sqld.domain.user.User;
+import com.qriz.sqld.domain.user.UserRepository;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,10 +32,13 @@ public class JwtAuthorizationFilter extends BasicAuthenticationFilter {
 
     private final RefreshTokenRepository refreshTokenRepository;
 
+    private UserRepository userRepository;
+
     public JwtAuthorizationFilter(AuthenticationManager authenticationManager,
-            RefreshTokenRepository refreshTokenRepository) {
+            RefreshTokenRepository refreshTokenRepository, UserRepository userRepository) {
         super(authenticationManager);
         this.refreshTokenRepository = refreshTokenRepository;
+        this.userRepository = userRepository;
     }
 
     // @Override
@@ -111,6 +116,8 @@ public class JwtAuthorizationFilter extends BasicAuthenticationFilter {
             FilterChain chain)
             throws IOException, ServletException {
 
+        log.debug("▶ JwtAuthorizationFilter 진입, Authorization 헤더={}", request.getHeader(JwtVO.HEADER));
+
         if (isHeaderVerify(request, response)) {
             // 클라이언트에서 보낸 액세스 토큰 (prefix 제거)
             String accessToken = request.getHeader(JwtVO.HEADER)
@@ -123,9 +130,16 @@ public class JwtAuthorizationFilter extends BasicAuthenticationFilter {
                     authenticateUser(loginUser);
 
                 } else {
-                    // 2) 액세스 토큰 만료된 경우, 사용자 정보만 추출
-                    LoginUser loginUser = JwtProcess.verifyAndExtractUser(accessToken);
-                    Long userId = loginUser.getUser().getId();
+                    // 1) 토큰에서 ID만 꺼낸 뒤
+                    LoginUser temp = JwtProcess.verifyAndExtractUser(accessToken);
+                    Long userId = temp.getUser().getId();
+
+                    // 2) DB에서 실제 User 조회
+                    User user = userRepository.findById(userId)
+                            .orElseThrow(() -> new RuntimeException("User not found"));
+
+                    // 3) 완전한 정보로 LoginUser 재생성
+                    LoginUser loginUser = new LoginUser(user);
 
                     // DB에서 리프레시 토큰 조회
                     Optional<RefreshToken> refreshTokenOptional = refreshTokenRepository.findById(userId);
@@ -150,7 +164,7 @@ public class JwtAuthorizationFilter extends BasicAuthenticationFilter {
                             if (JwtProcess.isTokenExpiringNear(refreshToken, 60 * 24 * 3)) {
                                 long refreshExpMs = JwtVO.REFRESH_TOKEN_EXPIRATION_TIME;
                                 if ("test1234".equals(loginUser.getUser().getUsername())) {
-                                    refreshExpMs = 1000L * 60 * 5; // 5분
+                                    refreshExpMs = 1000L * 60 * 5; // 10분
                                 }
                                 String newRefreshToken = JwtProcess.createRefreshToken(loginUser, refreshExpMs);
 
