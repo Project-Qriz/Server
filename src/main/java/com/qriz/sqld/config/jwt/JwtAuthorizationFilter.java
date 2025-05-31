@@ -158,7 +158,7 @@ public class JwtAuthorizationFilter extends BasicAuthenticationFilter {
                             String newAccessToken = JwtProcess.createAccessToken(loginUser, accessExpMs);
                             response.setHeader(
                                     JwtVO.HEADER,
-                                    JwtVO.TOKEN_PREFIX + newAccessToken);
+                                    newAccessToken);
 
                             // 4) 리프레시 토큰 만료 임박(3일 이내) 체크 후 재발급
                             if (JwtProcess.isTokenExpiringNear(refreshToken, 60 * 24 * 3)) {
