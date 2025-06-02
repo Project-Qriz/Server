@@ -10,6 +10,7 @@ import com.qriz.sqld.domain.survey.SurveyRepository;
 import com.qriz.sqld.domain.user.User;
 import com.qriz.sqld.domain.user.UserRepository;
 import com.qriz.sqld.dto.user.UserReqDto;
+import com.qriz.sqld.config.auth.RefreshTokenRepository;
 import com.qriz.sqld.domain.UserActivity.UserActivity;
 import com.qriz.sqld.domain.UserActivity.UserActivityRepository;
 import com.qriz.sqld.dto.user.UserRespDto;
@@ -52,6 +53,7 @@ public class UserService {
     private final UserExamSessionRepository userExamSessionRepository;
     private final EmailVerificationRepository emailVerificationRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final RestTemplate restTemplate;
 
     @Value("${oauth2.google.client-id}")
@@ -201,7 +203,12 @@ public class UserService {
         emailVerificationRepository.deleteByEmail(user.getEmail());
         passwordResetTokenRepository.deleteByEmail(user.getEmail());
 
-        // 10) 최종 User 삭제
+        // 10) RefreshToken
+        if (refreshTokenRepository.existsById(userId)) {
+            refreshTokenRepository.deleteById(userId);
+        }
+
+        // 11) 최종 User 삭제
         userRepository.delete(user);
     }
 
