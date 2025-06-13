@@ -511,7 +511,9 @@ public class ExamService {
                 List<UserExamSession> userSessions = userExamSessionRepository
                                 .findByUserIdOrderByCompletionDateDesc(userId);
 
+                // 완료된 세션을 map으로 빠르게 찾게 변환
                 Map<String, UserExamSession> completedSessionsMap = userSessions.stream()
+                                .filter(ues -> ues.getCompletionDate() != null) // 완료된 것만 map에 담음
                                 .collect(Collectors.toMap(
                                                 UserExamSession::getSession,
                                                 Function.identity(),
@@ -525,8 +527,6 @@ public class ExamService {
                                         Double totalScore = null;
 
                                         if (completed) {
-                                                // 기존: double score = ues.getSubject1Score() + ues.getSubject2Score();
-                                                // 변경:
                                                 ExamTestResult.SubjectDetails d1 = getSubjectScoreDetails(userId,
                                                                 examId, "subject1");
                                                 ExamTestResult.SubjectDetails d2 = getSubjectScoreDetails(userId,
@@ -541,9 +541,17 @@ public class ExamService {
                                                         totalScore);
                                 });
 
-                Comparator<ExamRespDto.SessionList> comparator = Comparator.comparing(
-                                sl -> Long.parseLong(sl.getSession().replaceAll("\\D+", "")));
-                if ("desc".equals(sort))
+                // status별 필터링
+                if ("completed".equalsIgnoreCase(status)) {
+                        sessionStream = sessionStream.filter(ExamRespDto.SessionList::isCompleted);
+                } else if ("incomplete".equalsIgnoreCase(status)) {
+                        sessionStream = sessionStream.filter(sl -> !sl.isCompleted());
+                }
+
+                // 정렬 (세션명을 기준으로 번호 오름차순/내림차순)
+                Comparator<ExamRespDto.SessionList> comparator = Comparator
+                                .comparing(sl -> Long.parseLong(sl.getSession().replaceAll("\\D+", "")));
+                if ("desc".equalsIgnoreCase(sort))
                         comparator = comparator.reversed();
 
                 return sessionStream

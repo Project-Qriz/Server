@@ -3,6 +3,7 @@ package com.qriz.sqld.config;
 import com.qriz.sqld.config.auth.RefreshTokenRepository;
 import com.qriz.sqld.config.jwt.JwtAuthenticationFilter;
 import com.qriz.sqld.config.jwt.JwtAuthorizationFilter;
+import com.qriz.sqld.config.jwt.JwtProcess;
 import com.qriz.sqld.config.jwt.JwtVO;
 import com.qriz.sqld.domain.user.UserEnum;
 import com.qriz.sqld.domain.user.UserRepository;
@@ -108,6 +109,16 @@ public class SecurityConfig {
         http.logout(logout -> logout
                 .logoutUrl("/api/logout")
                 .logoutSuccessHandler((request, response, authentication) -> {
+                    String header = request.getHeader(JwtVO.HEADER);
+                    if (header != null && header.startsWith(JwtVO.TOKEN_PREFIX)) {
+                        String accessToken = header.replace(JwtVO.TOKEN_PREFIX, "");
+                        try {
+                            Long userId = JwtProcess.getUserIdFromToken(accessToken);
+                            refreshTokenRepository.deleteById(userId);
+                        } catch (Exception e) {
+                            // 예외 무시(토큰 없거나 이미 삭제된 경우)
+                        }
+                    }
                     CustomResponseUtil.success(response, "로그아웃 성공");
                 })
                 .invalidateHttpSession(true)

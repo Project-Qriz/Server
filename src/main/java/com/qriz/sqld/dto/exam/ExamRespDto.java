@@ -12,5 +12,9 @@ public class ExamRespDto {
         private Long examId;
         private String session;
         private Double totalScore;
+
+        public boolean isCompleted() {
+            return completed;
+        }
     }
 }
