@@ -397,36 +397,17 @@ public class DailyService {
 
                 // UserActivity를 통한 총 점수 계산
                 List<UserActivity> activities = userActivityRepository.findByUserIdAndTestInfo(userId, dayNumber);
-                double totalScore;
-                if (activities.isEmpty()) {
-                        totalScore = 0.0;
-                } else {
-                        totalScore = activities.stream()
-                                        .mapToDouble(a -> a.getScore() != null ? a.getScore() : 0.0)
-                                        .sum();
-                }
+                double totalScore = activities.stream()
+                                .mapToDouble(a -> a.getScore() != null ? a.getScore() : 0.0)
+                                .sum();
 
-                // 기존 testStatus 정보 구성
+                // testStatus 정보 구성
                 int attemptCount = userDaily.getAttemptCount();
                 boolean passed = userDaily.isPassed();
                 boolean retestEligible = userDaily.isRetestEligible();
 
-                // 추가: 진행 가능 여부 계산
-                boolean available = false;
-                if ("Day1".equals(dayNumber)) {
-                        available = true; // 첫 날은 항상 진행 가능
-                } else {
-                        // 이전 Day 계산 (예: "Day2" → "Day1")
-                        int currentDayNum = Integer.parseInt(dayNumber.replace("Day", ""));
-                        String previousDay = "Day" + (currentDayNum - 1);
-                        UserDaily previousDaily = userDailyRepository.findByUserIdAndDayNumber(userId, previousDay)
-                                        .orElse(null);
-                        if (previousDaily != null && previousDaily.getCompletionDate() != null) {
-                                // 이전 Day가 완료되었고, 오늘의 계획일자가 이전 완료일 다음 날(또는 이후)이어야 진행 가능
-                                LocalDate allowedDate = previousDaily.getCompletionDate().plusDays(1);
-                                available = !userDaily.getPlanDate().isBefore(allowedDate);
-                        }
-                }
+                // available 계산을 dailyPlanService.canAccessDay()로 통일
+                boolean available = dailyPlanService.canAccessDay(userId, dayNumber);
 
                 DailyDetailAndStatusDto.StatusDto status = DailyDetailAndStatusDto.StatusDto.builder()
                                 .attemptCount(attemptCount)
